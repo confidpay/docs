@@ -1,80 +1,269 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Getting Started"
+description: "Begin building ConfidPay for the Fhenix Buildathon"
 ---
 
-## Get started in three steps
+# Getting Started
 
-Get your documentation site running locally and make your first customization.
+**This guide walks you through setting up your development environment and deploying the ConfidPay skeleton contract.**
 
-### Step 1: Set up your local environment
+## Prerequisites
+
+- Node.js v19+
+- Git
+- Basic Solidity knowledge
+- Testnet ETH from faucet (Base Sepolia or Arbitrum Sepolia)
+
+## Step 1: Clone the Starter Project
+
+```bash
+git clone https://github.com/confidpay/cofhe-hardhat-starter
+cd cofhe-hardhat-starter
+npm install
+```
+
+The starter includes:
+- Hardhat configuration with Fhenix plugin
+- CoFHE mock environment for local testing
+- Example contracts demonstrating FHE types
+
+## Step 2: Configure Environment
+
+Create `.env` from the example:
+
+```bash
+cp .env.example .env
+```
+
+Add your configuration:
+
+```bash
+# Required
+PRIVATE_KEY=0x...           # Deployer wallet private key
+
+# Testnet RPCs (choose one or both)
+BASE_SEPOLIA_RPC=https://sepolia.base.org
+ARBITRUM_SEPOLIA_RPC=https://sepolia.arbitrum.io/rpc
+```
+
+**Get testnet ETH:**
+- [Base Sepolia Faucet](https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet)
+- [Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
+
+## Step 3: Explore the Contract Structure
+
+```
+contracts/
+├── ConfidPay.sol           # Main payroll contract (your implementation)
+├── FHEHelper.sol           # ACL utilities
+└── mocks/
+    └── MockUSDC.sol        # Test token
+```
+
+Key FHE types you'll work with:
+
+```solidity
+// contracts/ConfidPay.sol
+import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+
+contract ConfidPay {
+    // Encrypted 256-bit integer - stores salary, amounts, timestamps
+    euint256 public encryptedAmount;
+    
+    // Encrypted boolean - stores release conditions
+    ebool public encryptedCanRelease;
+    
+    // Encrypted address - stores recipient
+    eaddress public encryptedRecipient;
+}
+```
+
+## Step 4: Deploy the Skeleton Contract
+
+Deploy to Base Sepolia:
+
+```bash
+npx hardhat run scripts/deploy.ts --network baseSepolia
+```
+
+Deploy to Arbitrum Sepolia:
+
+```bash
+npx hardhat run scripts/deploy.ts --network arbitrumSepolia
+```
+
+Expected output:
+```
+ConfidPay deployed to: 0x...
+```
+
+Save this address — you'll need it for the frontend integration.
+
+## Step 5: Test with Local Mock
+
+Before testnet deployment, test locally with the CoFHE mock:
+
+```typescript
+// test/ConfidPay.test.ts
+import { expect } from 'chai';
+import { FhenixHelpers } from '@fhenixprotocol/contracts';
+
+describe('ConfidPay ACL Setup', function () {
+  it('should set correct ACL permissions', async function () {
+    const { confipay, owner, employee } = await loadFixture(deployFixture);
+    
+    // Encrypt values locally for testing
+    const encryptedAmount = FhenixHelpers.encrypt(5000000);
+    
+    await confipay.createPayroll(
+      employee.address,
+      encryptedAmount,
+      // ... other encrypted params
+    );
+    
+    // Verify ACL was set correctly
+    const hasACL = await confipay.verifyACL(employee.address);
+    expect(hasACL).to.be.true;
+  });
+});
+```
+
+Run tests:
+
+```bash
+npx hardhat test
+```
+
+## Step 6: Frontend Integration
+
+Set up the Next.js frontend:
+
+```bash
+npx create-next-app@latest my-confidpay-frontend
+cd my-confidpay-frontend
+npm install @cofhe/react viem
+```
+
+Configure the provider:
+
+```tsx
+// app/providers.tsx
+import { CofheProvider } from '@cofhe/react';
+import { baseSepolia } from 'viem/chains';
+import { http } from 'viem';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <CofheProvider
+      config={{
+        chains: [baseSepolia],
+        transports: {
+          [baseSepolia.id]: http(),
+        },
+        contractAddress: '0x...', // Your deployed address
+      }}
+    >
+      {children}
+    </CofheProvider>
+  );
+}
+```
+
+## Step 7: Encrypt and Submit
+
+The core workflow — all encryption happens client-side:
+
+```tsx
+// app/payroll/create.tsx
+import { useEncrypt, useWrite } from '@cofhe/react';
+
+function CreatePayroll() {
+  const { encrypt } = useEncrypt();
+  const { write } = useWrite();
+
+  const createEncryptedPayroll = async () => {
+    // 1. Encrypt all sensitive data BEFORE sending to contract
+    const encryptedAmount = await encrypt(5000000); // 5 USDC
+    const encryptedReleaseTime = await encrypt(
+      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 // 30 days
+    );
+    const encryptedVestingRate = await encrypt(100); // 100%
+
+    // 2. Submit transaction with encrypted values
+    // On-chain: only euint256 is stored, plaintext is never visible
+    await write('createPayroll', [
+      employeeAddress,
+      encryptedAmount,
+      encryptedReleaseTime,
+      encryptedVestingRate,
+      0, // milestone hash
+    ]);
+  };
+
+  return <button onClick={createEncryptedPayroll}>Create Payroll</button>;
+}
+```
+
+## Understanding the Data Flow
+
+```
+1. ENCRYPT (client-side)
+   salary = 5000000
+   ↓ useEncrypt()
+   encryptedSalary = "0xencrypted..."
+
+2. SUBMIT (on-chain)
+   tx = createPayroll(recipient, encryptedSalary, ...)
+   → Contract stores euint256, not plaintext
+   → Block explorer shows only: "0xencrypted..."
+
+3. COMPUTE (CoFHE coprocessor)
+   Contract requests: Is block.timestamp >= releaseTime?
+   → Comparison happens on encrypted values
+   → Result is also encrypted
+
+4. RELEASE (on-chain)
+   Payment transferred (still encrypted to outside observers)
+
+5. DECRYPT (client-side only)
+   recipient.decrypt(payment)
+   → salary = 5000000 (plaintext revealed only to recipient)
+```
+
+## Common Pitfalls
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+  <Accordion title="Missing ACL permissions">
+    **Never skip ACL setup.** For every encrypted field:
+
+    ```solidity
+    // ❌ WRONG - Funds locked forever
+    p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+
+    // ✅ CORRECT
+    p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+    FHE.allowThis(p.encryptedAmount);        // Contract can access
+    FHE.allow(p.encryptedAmount, recipient);  // Recipient can decrypt
+    ```
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+  <Accordion title="Decimal handling">
+    USDC uses 6 decimals. 5 USDC = 5000000, not 5.
+  </Accordion>
+  <Accordion title="Timestamps">
+    Use Unix timestamps (seconds), not milliseconds. `Date.now() / 1000`, not `Date.now()`.
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## Next Steps
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+- Review the [Architecture](/architecture) for deeper technical understanding
+- Explore the [Payroll Contract](/contracts/payroll-contract) implementation
+- Study [ACL Best Practices](/security/acl-best-practices) before testnet deployment
+- Check [Privara Integration](/privara-integration) for payment rail details
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Resources
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+- [Fhenix Documentation](https://docs.fhenix.io)
+- [CoFHE Contracts](https://github.com/fhenixprotocol/cofhe-contracts)
+- [Privara SDK](https://github.com/reineiralabs/sdk)
+- [Fhenix Discord](https://discord.gg/fhenix) — Get help from the team

@@ -1,0 +1,312 @@
+---
+title: "React Hooks"
+description: "@cofhe/react hooks for ConfidPay frontend integration"
+---
+
+# React Hooks
+
+`@cofhe/react` provides React hooks for encrypting/decrypting data and interacting with ConfidPay contracts.
+
+## Installation
+
+```bash
+npm install @cofhe/react
+```
+
+## Core Hooks
+
+### useEncrypt
+
+Encrypts data client-side before sending to contracts.
+
+```typescript
+import { useEncrypt } from '@cofhe/react';
+
+function CreatePayroll() {
+  const { encrypt, isEncrypting, error } = useEncrypt();
+
+  const handleSubmit = async (salary: string) => {
+    const encryptedSalary = await encrypt(salary);
+    // Pass to contract
+  };
+
+  return (
+    <form onSubmit={() => handleSubmit(amount)}>
+      <input name="salary" />
+      <button disabled={isEncrypting}>Create Payroll</button>
+    </form>
+  );
+}
+```
+
+**Returns:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `encrypt` | `function` | Encrypts data, returns `einput` |
+| `isEncrypting` | `boolean` | Loading state |
+| `error` | `Error \| null` | Encryption error |
+
+**Supported Types:**
+
+```typescript
+// Numbers (converted to wei/wei for decimals)
+const encryptedAmount = await encrypt(5000000); // 5 USDC (6 decimals)
+
+// Strings (hashed for conditions)
+const encryptedCondition = await encrypt("milestone_1_completed");
+
+// Addresses
+const encryptedRecipient = await encrypt(recipientAddress);
+```
+
+### useDecrypt
+
+Decrypts encrypted contract data for display.
+
+```typescript
+import { useDecrypt } from '@cofhe/react';
+
+function PayrollDashboard({ encryptedBalance }: { encryptedBalance: any }) {
+  const { decrypt, isDecrypting, error } = useDecrypt();
+
+  const handleDecrypt = async () => {
+    const balance = await decrypt(encryptedBalance);
+    console.log('Decrypted balance:', balance);
+  };
+
+  return (
+    <div>
+      <button onClick={handleDecrypt} disabled={isDecrypting}>
+        View Balance
+      </button>
+      {error && <p>Error: {error.message}</p>}
+    </div>
+  );
+}
+```
+
+<Warning>
+Only parties with proper ACL permissions can decrypt. Ensure `FHE.allow()` was called for the requesting address.
+</Warning>
+
+### useWrite
+
+Executes contract transactions.
+
+```typescript
+import { useWrite } from '@cofhe/react';
+
+function PayrollManager() {
+  const { 
+    write, 
+    wait, 
+    isPending, 
+    isConfirming,
+    isConfirmed,
+    error 
+  } = useWrite();
+
+  const createPayroll = async () => {
+    // Execute transaction
+    const tx = await write('createPayroll', [
+      recipient,
+      encryptedAmount,
+      encryptedNextRelease,
+      encryptedVestingRate,
+      encryptedMilestoneHash,
+    ]);
+
+    // Wait for confirmation
+    const receipt = await wait(tx);
+    
+    if (receipt.status === 'success') {
+      console.log('Payroll created!');
+    }
+  };
+
+  return (
+    <button onClick={createPayroll} disabled={isPending}>
+      {isPending ? 'Confirming...' : 'Create Payroll'}
+    </button>
+  );
+}
+```
+
+**Transaction States:**
+
+| State | Description |
+|-------|-------------|
+| `isPending` | Transaction submitted, waiting for confirmation |
+| `isConfirming` | Transaction confirmed, waiting for blocks |
+| `isConfirmed` | Transaction finalized |
+
+### useRead
+
+Reads encrypted contract data (returns encrypted values).
+
+```typescript
+import { useRead } from '@cofhe/react';
+
+function PayrollInfo({ address }: { address: string }) {
+  const { data: encryptedPayroll, isLoading } = useRead({
+    functionName: 'payrolls',
+    args: [address],
+  });
+
+  return (
+    <div>
+      <span>Encrypted Payroll: {encryptedPayroll}</span>
+    </div>
+  );
+}
+```
+
+## Combined Example
+
+### Full Payroll Flow
+
+```typescript
+import { useEncrypt, useDecrypt, useWrite, useRead } from '@cofhe/react';
+
+function ConfidentialPayroll() {
+  const { encrypt } = useEncrypt();
+  const { decrypt } = useDecrypt();
+  const { write, wait, isPending } = useWrite();
+  const { data: encryptedBalance } = useRead({
+    functionName: 'encryptedBalances',
+    args: [userAddress],
+  });
+
+  const createPayroll = async () => {
+    const encryptedAmount = await encrypt(5000000);
+    const encryptedVestingRate = await encrypt(100);
+    const encryptedNextRelease = await encrypt(
+      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+    );
+
+    const tx = await write('createPayroll', [
+      employeeAddress,
+      encryptedAmount,
+      encryptedNextRelease,
+      encryptedVestingRate,
+      0,
+    ]);
+
+    await wait(tx);
+    alert('Payroll created!');
+  };
+
+  const releasePayment = async () => {
+    const tx = await write('releasePayment', [employeeAddress]);
+    await wait(tx);
+  };
+
+  const viewBalance = async () => {
+    const balance = await decrypt(encryptedBalance);
+    console.log('Your balance:', balance);
+  };
+
+  return (
+    <div className="payroll-dashboard">
+      <h2>Confidential Payroll</h2>
+      
+      <button onClick={createPayroll} disabled={isPending}>
+        Create Employee Payroll
+      </button>
+      
+      <button onClick={releasePayment} disabled={isPending}>
+        Release Payment
+      </button>
+      
+      <button onClick={viewBalance}>
+        View My Balance
+      </button>
+    </div>
+  );
+}
+```
+
+## Configuration
+
+### Provider Setup
+
+```typescript
+import { CofheProvider } from '@cofhe/react';
+import { http } from 'viem';
+import { baseSepolia, arbitrumSepolia } from 'viem/chains';
+
+function App() {
+  return (
+    <CofheProvider
+      config={{
+        chains: [baseSepolia, arbitrumSepolia],
+        transports: {
+          [baseSepolia.id]: http('https://sepolia.base.org'),
+          [arbitrumSepolia.id]: http('https://sepolia.arbitrum.io/rpc'),
+        },
+        contractAddress: '0x...', // Your deployed ConfidPay address
+      }}
+    >
+      <PayrollDashboard />
+    </CofheProvider>
+  );
+}
+```
+
+### Configuration Options
+
+```typescript
+interface CofheConfig {
+  chains: Chain[];
+  transports: Record<number, Transport>;
+  contractAddress: Address;
+  coprocessorUrl?: string;  // Custom CoFHE endpoint
+  debug?: boolean;          // Enable debug logging
+}
+```
+
+## Error Handling
+
+```typescript
+const { encrypt, error: encryptError } = useEncrypt();
+const { write, error: writeError } = useWrite();
+
+if (encryptError) {
+  console.error('Encryption failed:', encryptError.message);
+}
+
+if (writeError) {
+  switch (writeError.code) {
+    case 'REJECTED':
+      console.log('User rejected transaction');
+      break;
+    case 'INSUFFICIENT_FUNDS':
+      console.log('Not enough gas');
+      break;
+    case 'ACL_ERROR':
+      console.log('Missing decryption permissions');
+      break;
+  }
+}
+```
+
+## Best Practices
+
+1. **Always encrypt client-side** — Never send plaintext sensitive data
+2. **Handle loading states** — Show spinners during encryption/decryption
+3. **Manage errors gracefully** — Provide user-friendly error messages
+4. **Use appropriate types** — Convert amounts to correct decimal places
+5. **Test on testnets** — Verify integration before mainnet deployment
+
+<Cards>
+  <Card icon="link" title="Privara Integration" href="/privara-integration">
+    Payment rail integration
+  </Card>
+  <Card icon="rocket" title="Quickstart" href="/quickstart">
+    Full end-to-end quickstart
+  </Card>
+  <Card icon="shield" title="Security" href="/security/acl-best-practices">
+    ACL best practices
+  </Card>
+</Cards>

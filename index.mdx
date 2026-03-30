@@ -1,97 +1,69 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "ConfidPay"
+description: "Confidential payroll and treasury rail for DAOs and Web3 teams"
 ---
 
-## Setting up
+import { Cards, Card } from 'nextra/components'
 
-Get your documentation site up and running in minutes.
+# ConfidPay
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Encrypted payroll, programmable treasury outflows, and contractor payments where amounts, recipients, vesting schedules, and milestone conditions stay fully encrypted during computation.
 
-## Make it yours
+Built on **Fhenix CoFHE** + **Privara SDK**.
 
-Design a docs site that looks great and empowers your users.
+## Why ConfidPay?
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+Public blockchains expose every salary, bonus, contractor payout, and treasury movement. This leads to:
+
+- **Social attacks** and doxxing risks
+- **Tax leakage** from predictable on-chain patterns
+- **MEV front-running** on recurring payment flows
+- **Compliance barriers** for institutions and RWA players
+
+ConfidPay solves this by making confidentiality the foundational architecture — not a bolt-on feature.
+
+## Key Features
+
+<Cards>
+  <Card icon="lock" title="End-to-End Encryption" href="/introduction#how-it-works">
+    All sensitive data remains encrypted end-to-end while smart contracts still compute on it.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card icon="cog" title="Programmable Rules" href="/contracts/payroll-contract">
+    Monthly releases, vesting cliffs, milestone gating, and conditional payouts — all on encrypted data.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card icon="eye-slash" title="Selective Disclosure" href="/security/acl-best-practices">
+    Only the intended recipient or authorized auditor can decrypt their own payment flows.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card icon="link" title="EVM Composability" href="/architecture">
+    Other contracts can interact with encrypted balances without seeing plaintext.
   </Card>
-</Columns>
+</Cards>
 
-## Create beautiful pages
+## Supported Networks
 
-Everything you need to create world-class documentation.
+| Network | Status | Explorer |
+|---------|--------|----------|
+| Base Sepolia | Testnet | [Basescan](https://base-sepolia.blockscout.com) |
+| Arbitrum Sepolia | Testnet | [Arbiscan](https://sepolia.arbiscan.io) |
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Quick Links
 
-## Need inspiration?
+<Cards>
+  <Card icon="rocket" title="Quickstart" href="/quickstart">
+    Deploy your first confidential payroll in 5 minutes.
+  </Card>
+  <Card icon="book" title="Architecture" href="/architecture">
+    Understand how encrypted computation works.
+  </Card>
+  <Card icon="code" title="Smart Contracts" href="/contracts/overview">
+    Explore the ConfidPay contract architecture.
+  </Card>
+  <Card icon="paint-brush" title="Frontend Integration" href="/frontend/react-hooks">
+    Build with @cofhe/react hooks.
+  </Card>
+</Cards>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Supported Stablecoins
+
+- **USDC** on Base Sepolia
+- **USDC** on Arbitrum Sepolia

@@ -1,55 +1,58 @@
-# Mintlify Starter Kit
+# ConfidPay Documentation
 
-Use the starter kit to get your docs deployed and ready to customize.
+Confidential payroll and treasury rail for DAOs and Web3 teams — powered by Fhenix CoFHE + Privara SDK.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
-
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
-
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
-
-## AI-assisted writing
-
-Set up your AI coding tool to work with Mintlify:
+## Quick Start
 
 ```bash
-npx skills add https://mintlify.com/docs
-```
-
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
+# Preview documentation locally
 npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
 mint dev
+
+# Check for broken links
+mint broken-links
 ```
 
-View your local preview at `http://localhost:3000`.
+## Documentation Structure
 
-## Publishing changes
+```
+docs/
+├── index.mdx              # Landing page
+├── introduction.mdx      # What is ConfidPay
+├── architecture.mdx      # System architecture
+├── quickstart.mdx        # End-to-end quickstart
+├── development.mdx       # Local development setup
+├── contracts/
+│   ├── overview.mdx      # Smart contracts overview
+│   └── payroll-contract.mdx  # Complete contract reference
+├── frontend/
+│   └── react-hooks.mdx   # @cofhe/react integration
+├── privara-integration.mdx  # Privara SDK integration
+└── security/
+    └── acl-best-practices.mdx  # ACL security guide
+```
 
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
+## Tech Stack
 
-## Need help?
+| Layer | Technology |
+|-------|------------|
+| Encrypted Compute | Fhenix CoFHE Coprocessor |
+| Payment Rail | Privara SDK |
+| Smart Contracts | Solidity + FHE.sol |
+| Frontend | Next.js + @cofhe/react |
+| Development | Hardhat + cofhe-hardhat-starter |
 
-### Troubleshooting
+## Supported Networks
 
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
+- **Base Sepolia** (Testnet)
+- **Arbitrum Sepolia** (Testnet)
 
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+## Resources
+
+- [Fhenix Documentation](https://docs.fhenix.io)
+- [Privara SDK](https://github.com/reineiralabs/sdk)
+- [CoFHE Hardhat Starter](https://github.com/confidpay/cofhe-hardhat-starter)
+
+## License
+
+MIT

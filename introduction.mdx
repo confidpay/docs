@@ -1,0 +1,135 @@
+---
+title: "Introduction"
+description: "Wave 1 submission for Fhenix Privacy-by-Design Buildathon"
+---
+
+# ConfidPay: Privacy-by-Design Confidential Payroll
+
+**Wave 1 Buildathon Submission — Technical Proposal**
+
+## Problem Statement
+
+Public blockchains default to full transparency. While this enabled trustless DeFi, it created hard barriers for real-world teams deploying on-chain:
+
+**Current limitations:**
+- DAOs and Web3 companies expose every salary, bonus, contractor payout, and treasury movement on explorers
+- Social attacks, doxxing risks, and predictable MEV-style front-running on recurring payment flows
+- Institutional and RWA players cannot use transparent rails due to KYC/AML compliance requirements
+- Existing workarounds (custodial tools, off-chain spreadsheets, retrofitted ZK/TEE) break composability or introduce trusted parties
+
+**The core challenge:** How do we maintain programmability (vesting schedules, milestone gating, conditional releases) while keeping amounts, recipients, and conditions encrypted end-to-end?
+
+## Solution: Privacy-by-Design Architecture
+
+ConfidPay leverages **Fully Homomorphic Encryption (FHE)** to solve this problem at the architectural level — not as an afterthought.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Confidentiality Requirement                        │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Amount         →  Never visible on-chain                          │
+│  Recipient      →  Never visible on-chain                          │
+│  Vesting rules  →  Never visible on-chain                          │
+│  Milestones     →  Never visible on-chain                          │
+│                                                                      │
+│  Yet the contract CAN compute on this data:                         │
+│  • Time-based release checks ✓                                      │
+│  • Vesting calculations ✓                                           │
+│  • Conditional milestone verification ✓                            │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## How FHE Enables Confidential Computation
+
+With Fhenix CoFHE, smart contracts can perform operations on encrypted data without ever decrypting it on-chain:
+
+| Encrypted Type | Operations Supported | Use Case |
+|----------------|---------------------|----------|
+| `euint256` | add, sub, mul, div, mod, compare | Salary amounts, timestamps |
+| `ebool` | and, or, not, ifThenElse | Release conditions |
+| `eaddress` | comparison | Recipient validation |
+
+**Key insight:** The CoFHE coprocessor handles heavy FHE computation off-chain, returning encrypted results. Gas costs remain manageable while preserving privacy.
+
+## High-Level Architecture
+
+```
+User (DAO Admin)
+      │
+      ▼
+Frontend (Next.js + @cofhe/react)
+      │
+      │  1. Client-side encryption via useEncrypt()
+      │  2. Submit tx with encrypted inputs
+      ▼
+ConfidPay.sol (on Fhenix testnet)
+      │
+      │  3. Store encrypted (euint256) values
+      │  4. Trigger CoFHE computation
+      ▼
+CoFHE Coprocessor (off-chain)
+      │
+      │  5. Compute on encrypted data
+      │  6. Return encrypted results
+      ▼
+Privara SDK Layer
+      │
+      │  7. Confidential USDC transfer
+      │  8. Release encrypted payment
+      ▼
+Recipient
+      │
+      │  9. Decrypt via permit (client-side only)
+      ▼
+Plaintext balance revealed only to intended recipient
+```
+
+## Tech Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Encrypted Compute** | Fhenix CoFHE | On-chain FHE operations via coprocessor |
+| **Encrypted Types** | FHE.sol | euint256, ebool, eaddress in Solidity |
+| **ACL System** | FHE.allow(), FHE.allowThis() | Decryption permission control |
+| **Payment Rail** | Privara SDK | Confidential USDC transfers |
+| **Frontend** | Next.js + @cofhe/react | Encryption/decryption hooks |
+| **Development** | Hardhat + cofhe-hardhat-starter | Local testing with mocks |
+
+## Network Support
+
+| Network | Status | Notes |
+|---------|--------|-------|
+| Base Sepolia | Testnet | Primary deployment target |
+| Arbitrum Sepolia | Testnet | Secondary option |
+
+## Implementation Progress (Wave 1)
+
+**Completed:**
+- [x] Smart contract skeleton with FHE types
+- [x] ACL setup patterns and best practices
+- [x] Time-based release logic
+- [x] Vesting calculations on encrypted data
+- [x] @cofhe/react hooks integration
+- [x] Privara SDK payment rail integration
+
+**Planned for Wave 2+:**
+- [ ] Milestone-based conditional releases
+- [ ] Multi-signature treasury controls
+- [ ] Auditor selective disclosure
+- [ ] Full EVM composability testing
+
+## Critical Considerations
+
+<Warning>
+**ACL is critical.** Missing `FHE.allow()` or `FHE.allowThis()` calls can permanently lock funds. Only grant decryption access to intended parties.
+</Warning>
+
+<Warning>
+**Testnet first.** Never deploy ACL-configured contracts to mainnet without extensive testing on testnet.
+</Warning>
+
+## Next Steps
+
+See the [Getting Started](/quickstart) guide to begin building with ConfidPay.

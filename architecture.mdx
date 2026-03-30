@@ -1,0 +1,164 @@
+---
+title: "Architecture"
+description: "How ConfidPay's encrypted computation architecture works"
+---
+
+# Architecture
+
+ConfidPay combines Fhenix CoFHE for encrypted computation with Privara SDK for confidential payment flows.
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         User (DAO Admin)                             │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js + @cofhe/react)                │
+│  • useEncrypt() - Encrypt salary/conditions                         │
+│  • useWrite() - Submit transactions                                 │
+│  • useDecrypt() - View encrypted results                            │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    ConfidPay.sol (on-chain)                         │
+│  • Stores euint256 (encryptedAmount, encryptedNextRelease, etc.)    │
+│  • ACL permissions (allowThis, allowSender, allow)                   │
+│  • Triggers computations via CoFHE                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+┌───────────────────────────────┐   ┌───────────────────────────────────┐
+│   CoFHE Coprocessor           │   │       Privara SDK Layer            │
+│   (off-chain FHE compute)     │   │   (confidential stablecoin flows)  │
+│                               │   │                                   │
+│   • Encrypted arithmetic      │   │   • Encrypted USDC transfers      │
+│   • Time-based release logic  │   │   • Escrow patterns               │
+│   • Vesting calculations      │   │   • Programmable conditions       │
+│   • Milestone verification    │   │                                   │
+└───────────────────────────────┘   └───────────────────────────────────┘
+```
+
+## Fhenix CoFHE Layer
+
+### Encrypted Types
+
+Fhenix provides Solidity-compatible encrypted types:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `euint256` | Encrypted 256-bit unsigned integer | Salary amounts |
+| `ebool` | Encrypted boolean | Release conditions |
+| `eaddress` | Encrypted address | Recipient wallets |
+| `euint64` | Encrypted 64-bit unsigned integer | Timestamps |
+
+### Operations
+
+```solidity
+// Encrypted arithmetic
+euint256 encryptedSum = FHE.add(encryptedA, encryptedB);
+euint256 encryptedProduct = FHE.mul(encryptedAmount, encryptedRate);
+
+// Comparison (runs on encrypted data!)
+ebool canRelease = FHE.lte(encryptedNextRelease, currentTime);
+
+// Conditional logic
+euint256 releaseAmount = FHE.ifThenElse(canRelease, encryptedAmount, FHE.asEuint256(0));
+```
+
+### ACL (Access Control List)
+
+Critical for security — controls who can decrypt:
+
+```solidity
+// Allow the contract itself to access
+FHE.allowThis(encryptedAmount);
+
+// Allow the transaction sender to access
+FHE.allowSender(encryptedAmount);
+
+// Allow specific recipient to decrypt their own data
+FHE.allow(encryptedAmount, recipient);
+
+// Allow authorized auditor
+FHE.allow(encryptedAmount, auditorAddress);
+```
+
+<Warning>
+Missing `FHE.allow()` or `FHE.allowThis()` calls can permanently lock funds. Always grant access to the contract and intended recipient.
+</Warning>
+
+## Privara SDK Layer
+
+The Privara SDK handles confidential stablecoin flows:
+
+- **Encrypted transfers** — Move USDC without revealing amounts
+- **Escrow patterns** — Hold funds until conditions are met
+- **Programmable release** — Trigger by time, milestones, or custom logic
+
+```typescript
+import { ConfidentialTransfer } from '@reineiralabs/sdk';
+
+// Create encrypted payment intent
+const transfer = new ConfidentialTransfer({
+  recipient: encryptedRecipient,
+  amount: encryptedAmount,
+  token: 'USDC',
+  conditions: encryptedMilestoneHash,
+});
+```
+
+## Frontend Integration
+
+The `@cofhe/react` library provides React hooks:
+
+```typescript
+import { useEncrypt, useDecrypt, useWrite } from '@cofhe/react';
+
+// Encrypt sensitive data client-side
+const { encrypt } = useEncrypt();
+const encryptedSalary = await encrypt(salaryAmount);
+
+// Write to contract
+const { write } = useWrite();
+await write('createPayroll', [recipient, encryptedSalary, ...]);
+
+// Decrypt results (only for authorized parties)
+const { decrypt } = useDecrypt();
+const plaintext = await decrypt(encryptedResult);
+```
+
+## Network Support
+
+| Network | RPC URL | Explorer |
+|---------|---------|----------|
+| Base Sepolia | `https://sepolia.base.org` | [Basescan](https://base-sepolia.blockscout.com) |
+| Arbitrum Sepolia | `https://sepolia.arbitrum.io/rpc` | [Arbiscan](https://sepolia.arbiscan.io) |
+
+## Data Flow
+
+1. **Encryption**: Admin encrypts payroll data client-side
+2. **Submission**: Transaction submitted with encrypted inputs
+3. **Storage**: Contract stores encrypted values (not readable on-chain)
+4. **Computation**: CoFHE coprocessor performs calculations on encrypted data
+5. **Release**: Payment released when conditions are met (still encrypted)
+6. **Decryption**: Recipient decrypts their own payment locally
+
+## Composability
+
+Other contracts can interact with ConfidPay's encrypted balances:
+
+```solidity
+// Other contracts see only encrypted data
+mapping(address => euint256) public encryptedBalances;
+
+// Can integrate with DeFi protocols without exposing amounts
+function lendToProtocol(uint256 protocolId) external {
+    euint256 amount = encryptedBalances[msg.sender];
+    // Operates on encrypted data!
+}
+```

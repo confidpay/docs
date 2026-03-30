@@ -1,0 +1,109 @@
+---
+title: "Smart Contracts Overview"
+description: "ConfidPay contract architecture and components"
+---
+
+# Smart Contracts Overview
+
+ConfidPay's smart contract layer handles encrypted payroll storage, computation triggers, and payment release logic.
+
+## Contract Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ConfidPay.sol                            │
+│  (Main payroll contract with FHE encrypted storage)        │
+│                                                             │
+│  ├── Payroll storage (encrypted mappings)                  │
+│  ├── ACL management (allowThis, allowSender, allow)        │
+│  ├── Release conditions (time, milestones, vesting)        │
+│  └── Integration hooks (Privara, external protocols)       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  External Dependencies                       │
+│                                                             │
+│  ├── @fhenixprotocol/cofhe-contracts/FHE.sol               │
+│  │   └── Encrypted types & operations                      │
+│  ├── @openzeppelin/contracts/access/Ownable.sol           │
+│  │   └── Owner-based access control                        │
+│  └── Privara SDK integration                               │
+│       └── Confidential transfer patterns                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Core Components
+
+### Payroll Structure
+
+```solidity
+struct Payroll {
+    euint256 encryptedAmount;        // Monthly/yearly salary
+    euint256 encryptedNextRelease;    // Next unlock timestamp
+    euint256 encryptedVestingRate;    // Vesting percentage
+    euint256 encryptedMilestoneHash;  // Milestone conditions
+    bool isActive;                     // Payroll status
+}
+```
+
+### Key Functions
+
+| Function | Description | Access |
+|----------|-------------|--------|
+| `createPayroll()` | Initialize encrypted payroll for recipient | Owner only |
+| `releasePayment()` | Trigger payment release if conditions met | Anyone |
+| `updatePayroll()` | Modify encrypted payroll parameters | Owner only |
+| `cancelPayroll()` | Deactivate payroll and escrow remaining | Owner only |
+| `getPayrollInfo()` | View encrypted payroll metadata | Recipient/Owner |
+
+### Encrypted Storage
+
+All sensitive data is stored as `euint256`:
+
+```solidity
+mapping(address => Payroll) public payrolls;
+mapping(address => euint256) public encryptedBalances;
+```
+
+## Supported Networks
+
+| Network | Contract Address | Version |
+|---------|------------------|---------|
+| Base Sepolia | `0x...` (deploy to get) | Latest |
+| Arbitrum Sepolia | `0x...` (deploy to get) | Latest |
+
+## Dependencies
+
+### NPM Packages
+
+```bash
+npm install @fhenixprotocol/contracts
+npm install @fhenixprotocol/cofhe-contracts
+npm install @openzeppelin/contracts
+npm install @reineiralabs/sdk
+```
+
+### Import Paths
+
+```solidity
+import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import "@fhenixprotocol/cofhe-contracts/access/FHEOwnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+```
+
+## Contract Reference
+
+For complete contract code, see the [Payroll Contract Reference](/contracts/payroll-contract).
+
+<Cards>
+  <Card icon="code" title="Payroll Contract" href="/contracts/payroll-contract">
+    Complete contract with all features and ACL setup.
+  </Card>
+  <Card icon="book" title="ACL Best Practices" href="/security/acl-best-practices">
+    Secure permission management for encrypted data.
+  </Card>
+  <Card icon="link" title="Privara Integration" href="/privara-integration">
+    Confidential USDC transfer integration.
+  </Card>
+</Cards>

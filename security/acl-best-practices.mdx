@@ -1,0 +1,303 @@
+---
+title: "ACL Best Practices"
+description: "Secure access control list management for FHE encrypted data"
+---
+
+# ACL Best Practices
+
+The Access Control List (ACL) system in Fhenix CoFHE determines who can decrypt encrypted data. Proper ACL management is critical — mistakes can permanently lock funds.
+
+## Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FHE ACL System                                   │
+│                                                                     │
+│  FHE.allowThis(value)  → Contract can access                        │
+│  FHE.allowSender(value) → Tx sender can access                     │
+│  FHE.allow(value, address) → Specific address can access            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Core ACL Functions
+
+### FHE.allowThis
+
+Grants the **contract itself** permission to access the encrypted value.
+
+```solidity
+FHE.allowThis(encryptedAmount);
+```
+
+**Use when:**
+- Contract needs to perform operations on the value
+- Required for computation via CoFHE coprocessor
+
+### FHE.allowSender
+
+Grants the **transaction sender** permission to access.
+
+```solidity
+FHE.allowSender(encryptedAmount);
+```
+
+**Use when:**
+- The caller needs to decrypt the result after execution
+- For owner-only functions where owner should see results
+
+### FHE.allow
+
+Grants a **specific address** permission to access.
+
+```solidity
+FHE.allow(encryptedAmount, recipient);
+```
+
+**Use when:**
+- Recipient needs to decrypt their own data
+- Auditor needs to verify specific records
+- Third-party integration requires access
+
+## Common Patterns
+
+### Pattern 1: Standard Payroll Setup
+
+For each encrypted field in a payroll:
+
+```solidity
+function createPayroll(
+    address recipient,
+    einput encryptedAmount,
+    einput encryptedNextRelease,
+    einput encryptedVestingRate,
+    einput encryptedMilestoneHash
+) external onlyOwner {
+    Payroll storage p = payrolls[recipient];
+
+    // Convert einput to euint256
+    p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+    p.encryptedNextRelease = FHE.asEuint256(encryptedNextRelease);
+    p.encryptedVestingRate = FHE.asEuint256(encryptedVestingRate);
+    p.encryptedMilestoneHash = FHE.asEuint256(encryptedMilestoneHash);
+    p.isActive = true;
+
+    // ACL for amount
+    FHE.allowThis(p.encryptedAmount);
+    FHE.allowSender(p.encryptedAmount);
+    FHE.allow(p.encryptedAmount, recipient);
+
+    // ACL for next release
+    FHE.allowThis(p.encryptedNextRelease);
+    FHE.allowSender(p.encryptedNextRelease);
+    FHE.allow(p.encryptedNextRelease, recipient);
+
+    // ACL for vesting rate
+    FHE.allowThis(p.encryptedVestingRate);
+    FHE.allowSender(p.encryptedVestingRate);
+    FHE.allow(p.encryptedVestingRate, recipient);
+
+    // ACL for milestone hash
+    FHE.allowThis(p.encryptedMilestoneHash);
+    FHE.allowSender(p.encryptedMilestoneHash);
+    FHE.allow(p.encryptedMilestoneHash, recipient);
+
+    emit PayrollCreated(recipient);
+}
+```
+
+### Pattern 2: Auditor Access
+
+Grant auditors temporary read-only access:
+
+```solidity
+address public authorizedAuditor;
+
+function grantAuditorAccess(euint256 value) external onlyOwner {
+    FHE.allow(value, authorizedAuditor);
+}
+
+function revokeAuditorAccess(euint256 value) external onlyOwner {
+    FHE.disallow(value, authorizedAuditor);
+}
+```
+
+### Pattern 3: Time-Limited Access
+
+```solidity
+function grantTimedAccess(
+    euint256 value,
+    address recipient,
+    uint256 duration
+) external onlyOwner {
+    FHE.allow(value, recipient);
+    // Note: In production, implement automatic expiration via scheduled job
+}
+```
+
+### Pattern 4: Multi-Signature Control
+
+For high-value operations:
+
+```solidity
+mapping(bytes32 => bool) public executedTxs;
+mapping(bytes32 => mapping(address => bool)) public confirmations;
+
+function executeWithMultisig(
+    bytes32 txHash,
+    einput encryptedParams
+) external {
+    require(confirmations[txHash][msg.sender], "Not confirmed");
+    require(isQuorumReached(txHash), "No quorum");
+
+    euint256 value = FHE.asEuint256(encryptedParams);
+    FHE.allowThis(value);
+    // Execute operation...
+}
+```
+
+## Security Checklist
+
+<Steps>
+<Step title="Always set allowThis">
+For any encrypted value the contract will operate on:
+
+```solidity
+// ❌ WRONG - Contract cannot access
+p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+
+// ✅ CORRECT
+p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+FHE.allowThis(p.encryptedAmount);
+```
+</Step>
+
+<Step title="Always grant recipient access">
+Recipients must be able to decrypt their own data:
+
+```solidity
+// ❌ WRONG - Recipient cannot see their balance
+encryptedBalances[recipient] = amount;
+
+// ✅ CORRECT
+encryptedBalances[recipient] = amount;
+FHE.allow(encryptedBalances[recipient], recipient);
+```
+</Step>
+
+<Step title="Use allowSender for owner functions">
+If the owner should see operation results:
+
+```solidity
+function updatePayroll(...) external onlyOwner {
+    // ...
+    FHE.allowSender(p.encryptedAmount);
+}
+```
+</Step>
+
+<Step title="Revoke when no longer needed">
+Clean up permissions when data is no longer relevant:
+
+```solidity
+function cancelPayroll(address recipient) external onlyOwner {
+    Payroll storage p = payrolls[recipient];
+    
+    // Revoke all permissions
+    FHE.disallow(p.encryptedAmount, recipient);
+    FHE.disallow(p.encryptedNextRelease, recipient);
+    // ... revoke all fields
+    
+    p.isActive = false;
+}
+```
+</Step>
+
+<Step title="Test ACL thoroughly">
+Always verify ACL setup with tests:
+
+```typescript
+describe('ACL Setup', () => {
+  it('should allow contract to access encrypted amount', async () => {
+    const contractBalance = await cofhe.canContractAccess(encryptedAmount);
+    expect(contractBalance).to.be.true;
+  });
+
+  it('should allow recipient to decrypt their balance', async () => {
+    const canDecrypt = await cofhe.canAddressDecrypt(recipient, encryptedAmount);
+    expect(canDecrypt).to.be.true;
+  });
+
+  it('should NOT allow random address to decrypt', async () {
+    const canDecrypt = await cofhe.canAddressDecrypt(randomAddress, encryptedAmount);
+    expect(canDecrypt).to.be.false;
+  });
+});
+```
+</Step>
+</Steps>
+
+## Common Mistakes
+
+| Mistake | Consequence | Fix |
+|---------|-------------|-----|
+| Missing `allowThis` | Contract cannot operate on value | Always call `FHE.allowThis()` |
+| Missing `allow(recipient)` | Recipient cannot decrypt | Grant access to intended parties |
+| Forgotten ACL in loops | Some values locked | Verify all loop iterations |
+| Not revoking on cleanup | Stale permissions | Revoke when data expires |
+| Over-permissive access | Security breach | Grant minimum required access |
+
+## Testing ACL
+
+### Hardhat Test Example
+
+```typescript
+import { expect } from 'chai';
+import { ethers } from 'hardhat';
+
+describe('ConfidPay ACL', function () {
+  it('should set correct ACL on payroll creation', async function () {
+    const { confipay, owner, employee } = await loadFixture(deployFixture);
+
+    await confipay.createPayroll(
+      employee.address,
+      encryptedAmount,
+      encryptedNextRelease,
+      encryptedVestingRate,
+      encryptedMilestoneHash
+    );
+
+    // Verify contract access
+    const contractCanAccess = await confipay.canContractAccess(employee.address);
+    expect(contractCanAccess).to.be.true;
+
+    // Verify recipient access
+    const recipientCanDecrypt = await confipay.canAddressDecrypt(employee.address);
+    expect(recipientCanDecrypt).to.be.true;
+  });
+});
+```
+
+## Emergency Procedures
+
+If funds are accidentally locked:
+
+1. **Check ACL status** — Use CoFHE tools to inspect permissions
+2. **Identify missing allow()** — Determine which addresses need access
+3. **Migration pattern** — Deploy new contract with correct ACL
+4. **Contact support** — For testnet issues, can reset state
+
+<Warning>
+On mainnet, ACL mistakes are permanent. Always test thoroughly on testnet first.
+</Warning>
+
+<Cards>
+  <Card icon="code" title="Payroll Contract" href="/contracts/payroll-contract">
+    Contract with proper ACL implementation
+  </Card>
+  <Card icon="rocket" title="Quickstart" href="/quickstart">
+    End-to-end setup guide
+  </Card>
+  <Card icon="cube" title="Architecture" href="/architecture">
+    System architecture
+  </Card>
+</Cards>

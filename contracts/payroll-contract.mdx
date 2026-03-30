@@ -1,0 +1,293 @@
+---
+title: "Payroll Contract"
+description: "Complete ConfidPay smart contract reference"
+---
+
+# Payroll Contract
+
+Complete ConfidPay contract with FHE encrypted payroll storage, time-based releases, vesting, and milestone gating.
+
+## Complete Contract
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract ConfidPay is Ownable {
+    struct Payroll {
+        euint256 encryptedAmount;
+        euint256 encryptedNextRelease;
+        euint256 encryptedVestingRate;
+        euint256 encryptedMilestoneHash;
+        bool isActive;
+    }
+
+    mapping(address => Payroll) public payrolls;
+    mapping(address => euint256) public encryptedBalances;
+
+    uint256 public constant RELEASE_INTERVAL = 30 days;
+
+    event PayrollCreated(address indexed recipient);
+    event PaymentReleased(address indexed recipient, uint256 amount);
+    event PayrollCancelled(address indexed recipient);
+
+    function createPayroll(
+        address recipient,
+        einput encryptedAmount,
+        einput encryptedNextRelease,
+        einput encryptedVestingRate,
+        einput encryptedMilestoneHash
+    ) external onlyOwner {
+        require(!payrolls[recipient].isActive, "Payroll already exists");
+
+        Payroll storage p = payrolls[recipient];
+
+        p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+        p.encryptedNextRelease = FHE.asEuint256(encryptedNextRelease);
+        p.encryptedVestingRate = FHE.asEuint256(encryptedVestingRate);
+        p.encryptedMilestoneHash = FHE.asEuint256(encryptedMilestoneHash);
+        p.isActive = true;
+
+        _setupACL(p, recipient);
+
+        emit PayrollCreated(recipient);
+    }
+
+    function _setupACL(Payroll storage p, address recipient) internal {
+        FHE.allowThis(p.encryptedAmount);
+        FHE.allowSender(p.encryptedAmount);
+        FHE.allow(p.encryptedAmount, recipient);
+
+        FHE.allowThis(p.encryptedNextRelease);
+        FHE.allowSender(p.encryptedNextRelease);
+        FHE.allow(p.encryptedNextRelease, recipient);
+
+        FHE.allowThis(p.encryptedVestingRate);
+        FHE.allowSender(p.encryptedVestingRate);
+        FHE.allow(p.encryptedVestingRate, recipient);
+
+        FHE.allowThis(p.encryptedMilestoneHash);
+        FHE.allowSender(p.encryptedMilestoneHash);
+        FHE.allow(p.encryptedMilestoneHash, recipient);
+    }
+
+    function releasePayment(address recipient) external {
+        Payroll storage p = payrolls[recipient];
+        require(p.isActive, "Payroll inactive");
+
+        euint256 currentTime = FHE.asEuint256(block.timestamp);
+        ebool canRelease = FHE.lte(p.encryptedNextRelease, currentTime);
+
+        euint256 releaseAmount = FHE.ifThenElse(
+            canRelease,
+            _calculateReleaseAmount(p.encryptedAmount, p.encryptedVestingRate),
+            FHE.asEuint256(0)
+        );
+
+        ebool hasBalance = FHE.gt(encryptedBalances[recipient], FHE.asEuint256(0));
+        releaseAmount = FHE.ifThenElse(hasBalance, releaseAmount, FHE.asEuint256(0));
+
+        encryptedBalances[recipient] = FHE.sub(
+            encryptedBalances[recipient],
+            releaseAmount
+        );
+
+        _updateNextRelease(p, canRelease);
+
+        emit PaymentReleased(recipient, 0);
+    }
+
+    function _calculateReleaseAmount(
+        euint256 amount,
+        euint256 vestingRate
+    ) internal pure returns (euint256) {
+        return FHE.mul(FHE.div(amount, FHE.asEuint256(100)), vestingRate);
+    }
+
+    function _updateNextRelease(Payroll storage p, ebool wasReleased) internal {
+        euint256 newReleaseTime = FHE.add(
+            p.encryptedNextRelease,
+            FHE.asEuint256(RELEASE_INTERVAL)
+        );
+        p.encryptedNextRelease = FHE.ifThenElse(wasReleased, newReleaseTime, p.encryptedNextRelease);
+    }
+
+    function depositFunds(address recipient) external payable {
+        euint256 encryptedDeposit = FHE.asEuint256(msg.value);
+        encryptedBalances[recipient] = FHE.add(
+            encryptedBalances[recipient],
+            encryptedDeposit
+        );
+        FHE.allowThis(encryptedBalances[recipient]);
+        FHE.allowSender(encryptedBalances[recipient]);
+        FHE.allow(encryptedBalances[recipient], recipient);
+    }
+
+    function withdraw(address recipient) external {
+        euint256 balance = encryptedBalances[recipient];
+        FHE.allowThis(balance);
+        FHE.allowSender(balance);
+
+        euint256 zero = FHE.asEuint256(0);
+        encryptedBalances[recipient] = zero;
+
+        (bool success, ) = recipient.call{value: 0}("");
+        require(success, "Transfer failed");
+    }
+
+    function cancelPayroll(address recipient) external onlyOwner {
+        payrolls[recipient].isActive = false;
+        emit PayrollCancelled(recipient);
+    }
+
+    function updatePayroll(
+        address recipient,
+        einput newEncryptedAmount,
+        einput newEncryptedVestingRate
+    ) external onlyOwner {
+        Payroll storage p = payrolls[recipient];
+        require(p.isActive, "Payroll not active");
+
+        p.encryptedAmount = FHE.asEuint256(newEncryptedAmount);
+        p.encryptedVestingRate = FHE.asEuint256(newEncryptedVestingRate);
+
+        FHE.allowThis(p.encryptedAmount);
+        FHE.allowSender(p.encryptedAmount);
+        FHE.allow(p.encryptedAmount, recipient);
+
+        FHE.allowThis(p.encryptedVestingRate);
+        FHE.allowSender(p.encryptedVestingRate);
+        FHE.allow(p.encryptedVestingRate, recipient);
+    }
+}
+```
+
+## Function Reference
+
+### createPayroll
+
+Creates an encrypted payroll for a recipient.
+
+```solidity
+function createPayroll(
+    address recipient,
+    einput encryptedAmount,
+    einput encryptedNextRelease,
+    einput encryptedVestingRate,
+    einput encryptedMilestoneHash
+) external onlyOwner
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `recipient` | `address` | Recipient wallet address |
+| `encryptedAmount` | `einput` | Encrypted monthly salary (in wei) |
+| `encryptedNextRelease` | `einput` | Encrypted first release timestamp |
+| `encryptedVestingRate` | `einput` | Encrypted vesting percentage (0-100) |
+| `encryptedMilestoneHash` | `einput` | Encrypted milestone conditions hash |
+
+**Example:**
+
+```typescript
+import { useEncrypt, useWrite } from '@cofhe/react';
+
+const { encrypt } = useEncrypt();
+const { write } = useWrite();
+
+const encryptedAmount = await encrypt(5000000000); // 5 USDC (6 decimals)
+const encryptedNextRelease = await encrypt(Date.now() / 1000 + 30 * 24 * 60 * 60);
+const encryptedVestingRate = await encrypt(100);
+const encryptedMilestoneHash = await encrypt(0);
+
+await write('createPayroll', [
+  recipientAddress,
+  encryptedAmount,
+  encryptedNextRelease,
+  encryptedVestingRate,
+  encryptedMilestoneHash,
+]);
+```
+
+### releasePayment
+
+Releases payment to recipient if conditions are met.
+
+```solidity
+function releasePayment(address recipient) external
+```
+
+**Conditions checked (encrypted):**
+- Current time >= next release timestamp
+- Recipient has active payroll
+- Available balance > 0
+
+### updatePayroll
+
+Updates amount and vesting rate for active payroll.
+
+```solidity
+function updatePayroll(
+    address recipient,
+    einput newEncryptedAmount,
+    einput newEncryptedVestingRate
+) external onlyOwner
+```
+
+### cancelPayroll
+
+Deactivates payroll (cannot be reversed).
+
+```solidity
+function cancelPayroll(address recipient) external onlyOwner
+```
+
+## ACL Setup
+
+Each encrypted field requires ACL permissions:
+
+```solidity
+function _setupACL(Payroll storage p, address recipient) internal {
+    // Amount permissions
+    FHE.allowThis(p.encryptedAmount);
+    FHE.allowSender(p.encryptedAmount);
+    FHE.allow(p.encryptedAmount, recipient);
+
+    // Next release permissions
+    FHE.allowThis(p.encryptedNextRelease);
+    FHE.allowSender(p.encryptedNextRelease);
+    FHE.allow(p.encryptedNextRelease, recipient);
+
+    // Vesting rate permissions
+    FHE.allowThis(p.encryptedVestingRate);
+    FHE.allowSender(p.encryptedVestingRate);
+    FHE.allow(p.encryptedVestingRate, recipient);
+
+    // Milestone hash permissions
+    FHE.allowThis(p.encryptedMilestoneHash);
+    FHE.allowSender(p.encryptedMilestoneHash);
+    FHE.allow(p.encryptedMilestoneHash, recipient);
+}
+```
+
+<Warning>
+Never skip ACL setup. Missing `FHE.allow()` calls will permanently lock funds — only the contract can access them, not even the owner.
+</Warning>
+
+## Deployment
+
+### Using Hardhat
+
+```bash
+npx hardhat run scripts/deploy.ts --network baseSepolia
+```
+
+### Verification
+
+```bash
+npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>
+```

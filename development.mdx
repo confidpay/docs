@@ -1,94 +1,304 @@
 ---
-title: 'Development'
-description: 'Preview changes locally to update your docs'
+title: "Development"
+description: "Set up your local development environment for ConfidPay"
 ---
 
-<Info>
-  **Prerequisites**:
-  - Node.js version 19 or higher
-  - A docs repository with a `docs.json` file
-</Info>
+# Development
 
-Follow these steps to install and run Mintlify on your operating system.
+Set up a local development environment for building with ConfidPay.
 
-<Steps>
-<Step title="Install the Mintlify CLI">
+## Prerequisites
 
-```bash
-npm i -g mint
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Node.js | 19+ | Required for modern JS features |
+| npm/yarn/pnpm | Latest | Package manager |
+| Git | Any | Version control |
+
+## Project Structure
+
 ```
-</Step>
-
-<Step title="Preview locally">
-
-Navigate to your docs directory where your `docs.json` file is located, and run the following command:
-
-```bash
-mint dev
-```
-
-A local preview of your documentation will be available at `http://localhost:3000`.
-
-</Step>
-</Steps>
-
-## Custom ports
-
-By default, Mintlify uses port 3000. You can customize the port Mintlify runs on by using the `--port` flag. For example, to run Mintlify on port 3333, use this command:
-
-```bash
-mint dev --port 3333
+my-confidpay-project/
+├── contracts/
+│   ├── ConfidPay.sol
+│   └── interfaces/
+├── scripts/
+│   ├── deploy.ts
+│   └── interact.ts
+├── test/
+│   └── ConfidPay.test.ts
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   └── lib/
+├── hardhat.config.ts
+└── package.json
 ```
 
-If you attempt to run Mintlify on a port that's already in use, it will use the next available port:
+## Installation
 
-```md
-Port 3000 is already in use. Trying 3001 instead.
-```
-
-## Mintlify versions
-
-Please note that each CLI release is associated with a specific version of Mintlify. If your local preview does not align with the production version, please update the CLI:
+### 1. Clone the Starter
 
 ```bash
-npm mint update
+npx degit confidpay/cofhe-hardhat-starter my-confidpay-project
+cd my-confidpay-project
+npm install
 ```
 
-## Validating links
-
-The CLI can assist with validating links in your documentation. To identify any broken links, use the following command:
+### 2. Install Dependencies
 
 ```bash
-mint broken-links
+npm install @fhenixprotocol/contracts @fhenixprotocol/cofhe-contracts
+npm install @openzeppelin/contracts @reineiralabs/sdk
+npm install @cofhe/react viem wagmi
+```
+
+## Hardhat Configuration
+
+```typescript
+// hardhat.config.ts
+import { HardhatUserConfig } from 'hardhat/config';
+import '@nomicfoundation/hardhat-ethers';
+import '@fhenixprotocol/hardhat-plugin';
+
+const config: HardhatUserConfig = {
+  solidity: {
+    version: '0.8.20',
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+    },
+  },
+  networks: {
+    hardhat: {
+      forking: {
+        url: 'https://sepolia.base.org',
+        enabled: true,
+      },
+    },
+    baseSepolia: {
+      url: 'https://sepolia.base.org',
+      accounts: [process.env.PRIVATE_KEY!],
+      chainId: 84532,
+    },
+    arbitrumSepolia: {
+      url: 'https://sepolia.arbitrum.io/rpc',
+      accounts: [process.env.PRIVATE_KEY!],
+      chainId: 421614,
+    },
+  },
+};
+
+export default config;
+```
+
+## Environment Variables
+
+```bash
+# .env
+PRIVATE_KEY=0x...              # Deployer wallet
+BASE_SEPOLIA_RPC=https://sepolia.base.org
+ARBITRUM_SEPOLIA_RPC=https://sepolia.arbitrum.io/rpc
+BASESCAN_API_KEY=...           # For contract verification
+ARBISCAN_API_KEY=...           # For contract verification
 ```
 
 ## Deployment
 
-If the deployment is successful, you should see the following:
+### Deploy to Testnet
 
-<Frame>
-  <img src="/images/checks-passed.png" alt="Screenshot of a deployment confirmation message that says All checks have passed." style={{ borderRadius: '0.5rem' }} />
-</Frame>
+```bash
+# Base Sepolia
+npx hardhat run scripts/deploy.ts --network baseSepolia
 
-## Code formatting
+# Arbitrum Sepolia
+npx hardhat run scripts/deploy.ts --network arbitrumSepolia
+```
 
-We suggest using extensions on your IDE to recognize and format MDX. If you're a VSCode user, consider the [MDX VSCode extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx) for syntax highlighting, and [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) for code formatting.
+### Deploy Script Example
+
+```typescript
+// scripts/deploy.ts
+import { ethers } from 'hardhat';
+
+async function main() {
+  console.log('Deploying ConfidPay...');
+
+  const ConfidPay = await ethers.getContractFactory('ConfidPay');
+  const contract = await ConfidPay.deploy();
+
+  await contract.waitForDeployment();
+  const address = await contract.getAddress();
+
+  console.log(`ConfidPay deployed to: ${address}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+```
+
+## Testing
+
+### Run Tests
+
+```bash
+# All tests
+npx hardhat test
+
+# Specific test file
+npx hardhat test test/ConfidPay.test.ts
+
+# With gas report
+REPORT_GAS=true npx hardhat test
+```
+
+### Test Example
+
+```typescript
+// test/ConfidPay.test.ts
+import { expect } from 'chai';
+import { ethers } from 'hardhat';
+import { FhenixHelpers } from '@fhenixprotocol/contracts';
+
+describe('ConfidPay', function () {
+  let confipay: any;
+  let owner: any;
+  let employee: any;
+
+  beforeEach(async function () {
+    [owner, employee] = await ethers.getSigners();
+
+    const ConfidPay = await ethers.getContractFactory('ConfidPay');
+    confipay = await ConfidPay.deploy();
+    await confipay.waitForDeployment();
+  });
+
+  describe('Payroll Creation', function () {
+    it('should create encrypted payroll', async function () {
+      const encryptedAmount = FhenixHelpers.encrypt(5000000);
+      const encryptedNextRelease = FhenixHelpers.encrypt(
+        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+      );
+      const encryptedVestingRate = FhenixHelpers.encrypt(100);
+
+      await confipay.createPayroll(
+        employee.address,
+        encryptedAmount,
+        encryptedNextRelease,
+        encryptedVestingRate,
+        0
+      );
+
+      const payroll = await confipay.payrolls(employee.address);
+      expect(payroll.isActive).to.be.true;
+    });
+
+    it('should set correct ACL permissions', async function () {
+      // Test ACL setup
+      const canContractAccess = await confipay.canContractAccess(employee.address);
+      expect(canContractAccess).to.be.true;
+    });
+  });
+});
+```
+
+## Local Mock Testing
+
+The Hardhat plugin provides a local CoFHE mock for testing:
+
+```typescript
+// hardhat.config.ts
+import '@fhenixprotocol/hardhat-plugin';
+
+const config: HardhatUserConfig = {
+  // ... other config
+  fhenix: {
+    enableMock: true, // Use local mock instead of testnet
+  },
+};
+```
+
+Run tests without testnet dependency:
+
+```bash
+npx hardhat test --network hardhat
+```
+
+## Frontend Development
+
+### Start Next.js Dev Server
+
+```bash
+cd frontend
+npm run dev
+```
+
+### Configuration
+
+```typescript
+// frontend/lib/config.ts
+export const config = {
+  supportedChains: [baseSepolia, arbitrumSepolia],
+  contracts: {
+    confidpay: {
+      [baseSepolia.id]: '0x...', // Base Sepolia address
+      [arbitrumSepolia.id]: '0x...', // Arbitrum Sepolia address
+    },
+  },
+};
+```
+
+## Contract Verification
+
+Verify on block explorers:
+
+```bash
+# Base Sepolia
+npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>
+
+# Arbitrum Sepolia
+npx hardhat verify --network arbitrumSepolia <CONTRACT_ADDRESS>
+```
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title='Error: Could not load the "sharp" module using the darwin-arm64 runtime'>
-
-    This may be due to an outdated version of node. Try the following:
-    1. Remove the currently-installed version of the CLI: `npm remove -g mint`
-    2. Upgrade to Node v19 or higher.
-    3. Reinstall the CLI: `npm i -g mint`
+  <Accordion title="Error: Cannot find module '@fhenixprotocol/contracts'">
+    Run `npm install @fhenixprotocol/contracts @fhenixprotocol/cofhe-contracts`
   </Accordion>
-
-  <Accordion title="Issue: Encountering an unknown error">
-  
-    Solution: Go to the root of your device and delete the `~/.mintlify` folder. Then run `mint dev` again.
+  <Accordion title="Error: Invalid private key">
+    Ensure your .env file has the correct format: `PRIVATE_KEY=0x...`
+  </Accordion>
+  <Accordion title="Error: Insufficient funds">
+    Get testnet ETH from a faucet for Base Sepolia or Arbitrum Sepolia
+  </Accordion>
+  <Accordion title="Encryption/Decryption fails">
+    Ensure ACL is set correctly with `FHE.allow()`, `FHE.allowThis()`, `FHE.allowSender()`
   </Accordion>
 </AccordionGroup>
 
-Curious about what changed in the latest CLI version? Check out the [CLI changelog](https://www.npmjs.com/package/mintlify?activeTab=versions).
+## Useful Commands
+
+```bash
+# Compile contracts
+npx hardhat compile
+
+# Run tests
+npx hardhat test
+
+# Deploy
+npx hardhat run scripts/deploy.ts --network baseSepolia
+
+# Verify contract
+npx hardhat verify <address> --network baseSepolia
+
+# Check gas usage
+REPORT_GAS=true npx hardhat test
+
+# Clean build artifacts
+npx hardhat clean
+```
