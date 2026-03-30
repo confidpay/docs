@@ -1,69 +1,59 @@
 ---
 title: "ConfidPay"
-description: "Confidential payroll and treasury rail for DAOs and Web3 teams"
+description: "Wave 1 Buildathon Submission — Privacy-by-Design Confidential Payroll"
 ---
-
-import { Cards, Card } from 'nextra/components'
 
 # ConfidPay
 
-Encrypted payroll, programmable treasury outflows, and contractor payments where amounts, recipients, vesting schedules, and milestone conditions stay fully encrypted during computation.
+Privacy-by-design confidential payroll and treasury rail for DAOs and Web3 teams.
 
 Built on **Fhenix CoFHE** + **Privara SDK**.
 
-## Why ConfidPay?
+## Overview
 
-Public blockchains expose every salary, bonus, contractor payout, and treasury movement. This leads to:
+ConfidPay enables encrypted payroll processing where salaries, recipients, vesting schedules, and milestone conditions remain encrypted during computation — no plaintext values ever touch the chain.
 
-- **Social attacks** and doxxing risks
-- **Tax leakage** from predictable on-chain patterns
-- **MEV front-running** on recurring payment flows
-- **Compliance barriers** for institutions and RWA players
+**Key properties:**
+- Amounts, recipients, and conditions never visible on-chain
+- Programmable release rules (time-based, milestone-gated, vesting)
+- Selective disclosure to intended recipients only
+- Full EVM composability
 
-ConfidPay solves this by making confidentiality the foundational architecture — not a bolt-on feature.
+## Problem
 
-## Key Features
+Public blockchains expose everything. DAOs and Web3 teams cannot run transparent rails due to:
 
-<Cards>
-  <Card icon="lock" title="End-to-End Encryption" href="/introduction#how-it-works">
-    All sensitive data remains encrypted end-to-end while smart contracts still compute on it.
-  </Card>
-  <Card icon="cog" title="Programmable Rules" href="/contracts/payroll-contract">
-    Monthly releases, vesting cliffs, milestone gating, and conditional payouts — all on encrypted data.
-  </Card>
-  <Card icon="eye-slash" title="Selective Disclosure" href="/security/acl-best-practices">
-    Only the intended recipient or authorized auditor can decrypt their own payment flows.
-  </Card>
-  <Card icon="link" title="EVM Composability" href="/architecture">
-    Other contracts can interact with encrypted balances without seeing plaintext.
-  </Card>
-</Cards>
+- Social attacks and doxxing risks
+- MEV front-running on recurring payments
+- Compliance barriers for institutions
+
+**The challenge:** Maintain programmability while keeping data encrypted end-to-end.
+
+## Solution
+
+FHE enables computation on encrypted data without decryption:
+
+```solidity
+// Salary stored as encrypted integer — never readable on-chain
+euint256 encryptedAmount;
+
+// Contract can still compute:
+ebool canRelease = FHE.lte(encryptedNextRelease, currentTime);
+euint256 payment = FHE.ifThenElse(canRelease, encryptedAmount, 0);
+```
 
 ## Supported Networks
 
-| Network | Status | Explorer |
-|---------|--------|----------|
-| Base Sepolia | Testnet | [Basescan](https://base-sepolia.blockscout.com) |
-| Arbitrum Sepolia | Testnet | [Arbiscan](https://sepolia.arbiscan.io) |
+| Network | Status |
+|---------|--------|
+| Base Sepolia | Testnet |
+| Arbitrum Sepolia | Testnet |
 
-## Quick Links
+## Documentation
 
-<Cards>
-  <Card icon="rocket" title="Quickstart" href="/quickstart">
-    Deploy your first confidential payroll in 5 minutes.
-  </Card>
-  <Card icon="book" title="Architecture" href="/architecture">
-    Understand how encrypted computation works.
-  </Card>
-  <Card icon="code" title="Smart Contracts" href="/contracts/overview">
-    Explore the ConfidPay contract architecture.
-  </Card>
-  <Card icon="paint-brush" title="Frontend Integration" href="/frontend/react-hooks">
-    Build with @cofhe/react hooks.
-  </Card>
-</Cards>
+Navigate using the sidebar or start with:
 
-## Supported Stablecoins
-
-- **USDC** on Base Sepolia
-- **USDC** on Arbitrum Sepolia
+1. **[Introduction](/introduction)** — Technical architecture and FHE overview
+2. **[Getting Started](/quickstart)** — Set up development environment
+3. **[Smart Contracts](/contracts/overview)** — ConfidPay contract implementation
+4. **[Frontend](/frontend/react-hooks)** — @cofhe/react integration

@@ -1,13 +1,17 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
   "name": "ConfidPay",
+  "theme": "mint",
   "colors": {
     "primary": "#10b981",
     "light": "#10b981",
     "dark": "#059669"
   },
   "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
   "navigation": {
     "tabs": [
       {
@@ -15,12 +19,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": [
-              "index",
-              "introduction",
-              "quickstart",
-              "development"
-            ]
+            "pages": ["index", "introduction", "quickstart", "development"]
           }
         ]
       },
@@ -29,9 +28,7 @@
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              "architecture"
-            ]
+            "pages": ["architecture"]
           }
         ]
       },
@@ -40,10 +37,7 @@
         "groups": [
           {
             "group": "Smart Contracts",
-            "pages": [
-              "contracts/overview",
-              "contracts/payroll-contract"
-            ]
+            "pages": ["contracts/overview", "contracts/payroll-contract"]
           }
         ]
       },
@@ -52,9 +46,7 @@
         "groups": [
           {
             "group": "Integrations",
-            "pages": [
-              "privara-integration"
-            ]
+            "pages": ["privara-integration"]
           }
         ]
       },
@@ -63,9 +55,7 @@
         "groups": [
           {
             "group": "Frontend",
-            "pages": [
-              "frontend/react-hooks"
-            ]
+            "pages": ["frontend/react-hooks"]
           }
         ]
       },
@@ -74,17 +64,11 @@
         "groups": [
           {
             "group": "Security",
-            "pages": [
-              "security/acl-best-practices"
-            ]
+            "pages": ["security/acl-best-practices"]
           }
         ]
       }
     ]
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
   },
   "footer": {
     "socials": {
