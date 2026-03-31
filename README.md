@@ -24,7 +24,7 @@ This approach solves the fundamental problem of transparent blockchains: exposur
 
 ## Key Technical Features
 
-- Encrypted payroll records using `euint256` fields
+- Encrypted payroll records using `euint128` fields
 - Programmable rules computed homomorphically on encrypted state
 - Selective disclosure for compliance and audits
 - Full EVM composability with other contracts
