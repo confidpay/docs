@@ -35,11 +35,11 @@ FHE enables computation on encrypted data without decryption:
 
 ```solidity
 // Salary stored as encrypted integer — never readable on-chain
-euint256 encryptedAmount;
+euint128 encryptedAmount;
 
 // Contract can still compute:
 ebool canRelease = FHE.lte(encryptedNextRelease, currentTime);
-euint256 payment = FHE.ifThenElse(canRelease, encryptedAmount, 0);
+euint128 payment = FHE.ifThenElse(canRelease, encryptedAmount, 0);
 ```
 
 ## Supported Networks
@@ -49,11 +49,3 @@ euint256 payment = FHE.ifThenElse(canRelease, encryptedAmount, 0);
 | Base Sepolia | Testnet |
 | Arbitrum Sepolia | Testnet |
 
-## Documentation
-
-Navigate using the sidebar or start with:
-
-1. **[Introduction](/introduction)** — Technical architecture and FHE overview
-2. **[Getting Started](/quickstart)** — Set up development environment
-3. **[Smart Contracts](/contracts/overview)** — ConfidPay contract implementation
-4. **[Frontend](/frontend/react-hooks)** — @cofhe/react integration

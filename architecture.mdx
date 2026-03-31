@@ -11,7 +11,7 @@ ConfidPay combines Fhenix CoFHE for encrypted computation with Privara SDK for c
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         User (DAO Admin)                             │
+│                         User (DAO Admin)                            │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
@@ -25,16 +25,16 @@ ConfidPay combines Fhenix CoFHE for encrypted computation with Privara SDK for c
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    ConfidPay.sol (on-chain)                         │
-│  • Stores euint256 (encryptedAmount, encryptedNextRelease, etc.)    │
-│  • ACL permissions (allowThis, allowSender, allow)                   │
+│  • Stores euint128 (encryptedAmount, encryptedNextRelease, etc.)    │
+│  • ACL permissions (allowThis, allowSender, allow)                  │
 │  • Triggers computations via CoFHE                                  │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                     ┌─────────────┴─────────────┐
                     ▼                           ▼
 ┌───────────────────────────────┐   ┌───────────────────────────────────┐
-│   CoFHE Coprocessor           │   │       Privara SDK Layer            │
-│   (off-chain FHE compute)     │   │   (confidential stablecoin flows)  │
+│   CoFHE Coprocessor           │   │       Privara SDK Layer           │
+│   (off-chain FHE compute)     │   │   (confidential stablecoin flows) │
 │                               │   │                                   │
 │   • Encrypted arithmetic      │   │   • Encrypted USDC transfers      │
 │   • Time-based release logic  │   │   • Escrow patterns               │
@@ -51,7 +51,7 @@ Fhenix provides Solidity-compatible encrypted types:
 
 | Type | Description | Example |
 |------|-------------|---------|
-| `euint256` | Encrypted 256-bit unsigned integer | Salary amounts |
+| `euint128` | Encrypted 128-bit unsigned integer | Salary amounts |
 | `ebool` | Encrypted boolean | Release conditions |
 | `eaddress` | Encrypted address | Recipient wallets |
 | `euint64` | Encrypted 64-bit unsigned integer | Timestamps |
@@ -60,14 +60,14 @@ Fhenix provides Solidity-compatible encrypted types:
 
 ```solidity
 // Encrypted arithmetic
-euint256 encryptedSum = FHE.add(encryptedA, encryptedB);
-euint256 encryptedProduct = FHE.mul(encryptedAmount, encryptedRate);
+euint128 encryptedSum = FHE.add(encryptedA, encryptedB);
+euint128 encryptedProduct = FHE.mul(encryptedAmount, encryptedRate);
 
 // Comparison (runs on encrypted data!)
 ebool canRelease = FHE.lte(encryptedNextRelease, currentTime);
 
 // Conditional logic
-euint256 releaseAmount = FHE.ifThenElse(canRelease, encryptedAmount, FHE.asEuint256(0));
+euint128 releaseAmount = FHE.ifThenElse(canRelease, encryptedAmount, FHE.aseuint128(0));
 ```
 
 ### ACL (Access Control List)
@@ -154,11 +154,11 @@ Other contracts can interact with ConfidPay's encrypted balances:
 
 ```solidity
 // Other contracts see only encrypted data
-mapping(address => euint256) public encryptedBalances;
+mapping(address => euint128) public encryptedBalances;
 
 // Can integrate with DeFi protocols without exposing amounts
 function lendToProtocol(uint256 protocolId) external {
-    euint256 amount = encryptedBalances[msg.sender];
+    euint128 amount = encryptedBalances[msg.sender];
     // Operates on encrypted data!
 }
 ```

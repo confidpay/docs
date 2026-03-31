@@ -25,19 +25,19 @@ ConfidPay leverages **Fully Homomorphic Encryption (FHE)** to solve this problem
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Confidentiality Requirement                        │
+│                    Confidentiality Requirement                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  Amount         →  Never visible on-chain                          │
-│  Recipient      →  Never visible on-chain                          │
-│  Vesting rules  →  Never visible on-chain                          │
-│  Milestones     →  Never visible on-chain                          │
-│                                                                      │
+│                                                                     │
+│  Amount         →  Never visible on-chain                           │
+│  Recipient      →  Never visible on-chain                           │
+│  Vesting rules  →  Never visible on-chain                           │
+│  Milestones     →  Never visible on-chain                           │
+│                                                                     │
 │  Yet the contract CAN compute on this data:                         │
 │  • Time-based release checks ✓                                      │
 │  • Vesting calculations ✓                                           │
-│  • Conditional milestone verification ✓                            │
-│                                                                      │
+│  • Conditional milestone verification ✓                             │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,11 +45,11 @@ ConfidPay leverages **Fully Homomorphic Encryption (FHE)** to solve this problem
 
 With Fhenix CoFHE, smart contracts can perform operations on encrypted data without ever decrypting it on-chain:
 
-| Encrypted Type | Operations Supported | Use Case |
-|----------------|---------------------|----------|
-| `euint256` | add, sub, mul, div, mod, compare | Salary amounts, timestamps |
-| `ebool` | and, or, not, ifThenElse | Release conditions |
-| `eaddress` | comparison | Recipient validation |
+| Encrypted Type | Operations Supported             | Use Case                     |
+|----------------|----------------------------------|------------------------------|
+| `euint128`     | add, sub, mul, div, mod, compare | Salary amounts, timestamps   |
+| `ebool`        | and, or, not, ifThenElse         | Release conditions           |
+| `eaddress`     | comparison                       | Recipient validation         |
 
 **Key insight:** The CoFHE coprocessor handles heavy FHE computation off-chain, returning encrypted results. Gas costs remain manageable while preserving privacy.
 
@@ -66,7 +66,7 @@ Frontend (Next.js + @cofhe/react)
       ▼
 ConfidPay.sol (on Fhenix testnet)
       │
-      │  3. Store encrypted (euint256) values
+      │  3. Store encrypted (euint128) values
       │  4. Trigger CoFHE computation
       ▼
 CoFHE Coprocessor (off-chain)
@@ -88,21 +88,15 @@ Plaintext balance revealed only to intended recipient
 
 ## Tech Stack
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **Encrypted Compute** | Fhenix CoFHE | On-chain FHE operations via coprocessor |
-| **Encrypted Types** | FHE.sol | euint256, ebool, eaddress in Solidity |
-| **ACL System** | FHE.allow(), FHE.allowThis() | Decryption permission control |
-| **Payment Rail** | Privara SDK | Confidential USDC transfers |
-| **Frontend** | Next.js + @cofhe/react | Encryption/decryption hooks |
-| **Development** | Hardhat + cofhe-hardhat-starter | Local testing with mocks |
+| Component             | Technology                      | Purpose                                 |
+|-----------------------|---------------------------------|-----------------------------------------|
+| **Encrypted Compute** | Fhenix CoFHE                    | On-chain FHE operations via coprocessor |
+| **Encrypted Types**   | FHE.sol                         | euint128, ebool, eaddress in Solidity   |
+| **ACL System**        | FHE.allow(), FHE.allowThis()    | Decryption permission control           |
+| **Payment Rail**      | Privara SDK                     | Confidential USDC transfers             |
+| **Frontend**          | Next.js + @cofhe/react          | Encryption/decryption hooks             |
+| **Development**       | Hardhat + cofhe-hardhat-starter | Local testing with mocks                |
 
-## Network Support
-
-| Network | Status | Notes |
-|---------|--------|-------|
-| Base Sepolia | Testnet | Primary deployment target |
-| Arbitrum Sepolia | Testnet | Secondary option |
 
 ## Implementation Progress (Wave 1)
 

@@ -11,7 +11,6 @@ description: "Begin building ConfidPay for the Fhenix Buildathon"
 
 - Node.js v19+
 - Git
-- Basic Solidity knowledge
 - Testnet ETH from faucet (Base Sepolia or Arbitrum Sepolia)
 
 ## Step 1: Clone the Starter Project
@@ -47,7 +46,7 @@ ARBITRUM_SEPOLIA_RPC=https://sepolia.arbitrum.io/rpc
 ```
 
 **Get testnet ETH:**
-- [Base Sepolia Faucet](https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet)
+- [Base Sepolia Faucet](https://www.alchemy.com/faucets/base-sepolia)
 - [Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
 
 ## Step 3: Explore the Contract Structure
@@ -67,8 +66,8 @@ Key FHE types you'll work with:
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
 contract ConfidPay {
-    // Encrypted 256-bit integer - stores salary, amounts, timestamps
-    euint256 public encryptedAmount;
+    // Encrypted 128-bit integer - stores salary, amounts, timestamps
+    euint128 public encryptedAmount;
     
     // Encrypted boolean - stores release conditions
     ebool public encryptedCanRelease;
@@ -190,7 +189,7 @@ function CreatePayroll() {
     const encryptedVestingRate = await encrypt(100); // 100%
 
     // 2. Submit transaction with encrypted values
-    // On-chain: only euint256 is stored, plaintext is never visible
+    // On-chain: only euint128 is stored, plaintext is never visible
     await write('createPayroll', [
       employeeAddress,
       encryptedAmount,
@@ -214,7 +213,7 @@ function CreatePayroll() {
 
 2. SUBMIT (on-chain)
    tx = createPayroll(recipient, encryptedSalary, ...)
-   → Contract stores euint256, not plaintext
+   → Contract stores euint128, not plaintext
    → Block explorer shows only: "0xencrypted..."
 
 3. COMPUTE (CoFHE coprocessor)
@@ -238,10 +237,10 @@ function CreatePayroll() {
 
     ```solidity
     // ❌ WRONG - Funds locked forever
-    p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+    p.encryptedAmount = FHE.aseuint128(encryptedAmount);
 
     // ✅ CORRECT
-    p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+    p.encryptedAmount = FHE.aseuint128(encryptedAmount);
     FHE.allowThis(p.encryptedAmount);        // Contract can access
     FHE.allow(p.encryptedAmount, recipient);  // Recipient can decrypt
     ```

@@ -12,23 +12,23 @@ ConfidPay's smart contract layer handles encrypted payroll storage, computation 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    ConfidPay.sol                            │
-│  (Main payroll contract with FHE encrypted storage)        │
+│  (Main payroll contract with FHE encrypted storage)         │  
 │                                                             │
-│  ├── Payroll storage (encrypted mappings)                  │
-│  ├── ACL management (allowThis, allowSender, allow)        │
-│  ├── Release conditions (time, milestones, vesting)        │
-│  └── Integration hooks (Privara, external protocols)       │
+│  ├── Payroll storage (encrypted mappings)                   │
+│  ├── ACL management (allowThis, allowSender, allow)         │
+│  ├── Release conditions (time, milestones, vesting)         │
+│  └── Integration hooks (Privara, external protocols)        │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  External Dependencies                       │
+│                  External Dependencies                      │
 │                                                             │
-│  ├── @fhenixprotocol/cofhe-contracts/FHE.sol               │
-│  │   └── Encrypted types & operations                      │
-│  ├── @openzeppelin/contracts/access/Ownable.sol           │
-│  │   └── Owner-based access control                        │
-│  └── Privara SDK integration                               │
+│  ├── @fhenixprotocol/cofhe-contracts/FHE.sol                │
+│  │   └── Encrypted types & operations                       │  
+│  ├── @openzeppelin/contracts/access/Ownable.sol             │
+│  │   └── Owner-based access control                         │
+│  └── Privara SDK integration                                │
 │       └── Confidential transfer patterns                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -39,39 +39,39 @@ ConfidPay's smart contract layer handles encrypted payroll storage, computation 
 
 ```solidity
 struct Payroll {
-    euint256 encryptedAmount;        // Monthly/yearly salary
-    euint256 encryptedNextRelease;    // Next unlock timestamp
-    euint256 encryptedVestingRate;    // Vesting percentage
-    euint256 encryptedMilestoneHash;  // Milestone conditions
-    bool isActive;                     // Payroll status
+    euint128 encryptedAmount;         // Monthly/yearly salary
+    euint128 encryptedNextRelease;    // Next unlock timestamp
+    euint128 encryptedVestingRate;    // Vesting percentage
+    euint128 encryptedMilestoneHash;  // Milestone conditions
+    bool isActive;                    // Payroll status
 }
 ```
 
 ### Key Functions
 
-| Function | Description | Access |
-|----------|-------------|--------|
-| `createPayroll()` | Initialize encrypted payroll for recipient | Owner only |
-| `releasePayment()` | Trigger payment release if conditions met | Anyone |
-| `updatePayroll()` | Modify encrypted payroll parameters | Owner only |
-| `cancelPayroll()` | Deactivate payroll and escrow remaining | Owner only |
-| `getPayrollInfo()` | View encrypted payroll metadata | Recipient/Owner |
+| Function           | Description                                | Access     |
+| ------------------ | ------------------------------------------ | ---------- |
+| `createPayroll()`  | Initialize encrypted payroll for recipient | Owner only |
+| `releasePayment()` | Trigger payment release if conditions met  | Anyone     |
+| `updatePayroll()`  | Modify encrypted payroll parameters        | Owner only |
+| `cancelPayroll()`  | Deactivate payroll and escrow remaining    | Owner only |
+| `getPayrollInfo()` | View encrypted payroll metadata            | Recipient/Owner |
 
 ### Encrypted Storage
 
-All sensitive data is stored as `euint256`:
+All sensitive data is stored as `euint128`:
 
 ```solidity
 mapping(address => Payroll) public payrolls;
-mapping(address => euint256) public encryptedBalances;
+mapping(address => euint128) public encryptedBalances;
 ```
 
 ## Supported Networks
 
-| Network | Contract Address | Version |
-|---------|------------------|---------|
-| Base Sepolia | `0x...` (deploy to get) | Latest |
-| Arbitrum Sepolia | `0x...` (deploy to get) | Latest |
+| Network          | Contract Address        | Version |
+| ---------------- | ----------------------- | ------- |
+| Base Sepolia     | `0x...` (deploy to get) | Latest  |
+| Arbitrum Sepolia | `0x...` (deploy to get) | Latest  |
 
 ## Dependencies
 

@@ -14,8 +14,8 @@ The Access Control List (ACL) system in Fhenix CoFHE determines who can decrypt 
 │                    FHE ACL System                                   │
 │                                                                     │
 │  FHE.allowThis(value)  → Contract can access                        │
-│  FHE.allowSender(value) → Tx sender can access                     │
-│  FHE.allow(value, address) → Specific address can access            │
+│  FHE.allowSender(value) → Tx sender can access                      │
+│  FHE.allow(value, address) → Specific address can access            |
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,11 +74,11 @@ function createPayroll(
 ) external onlyOwner {
     Payroll storage p = payrolls[recipient];
 
-    // Convert einput to euint256
-    p.encryptedAmount = FHE.asEuint256(encryptedAmount);
-    p.encryptedNextRelease = FHE.asEuint256(encryptedNextRelease);
-    p.encryptedVestingRate = FHE.asEuint256(encryptedVestingRate);
-    p.encryptedMilestoneHash = FHE.asEuint256(encryptedMilestoneHash);
+    // Convert einput to euint128
+    p.encryptedAmount = FHE.aseuint128(encryptedAmount);
+    p.encryptedNextRelease = FHE.aseuint128(encryptedNextRelease);
+    p.encryptedVestingRate = FHE.aseuint128(encryptedVestingRate);
+    p.encryptedMilestoneHash = FHE.aseuint128(encryptedMilestoneHash);
     p.isActive = true;
 
     // ACL for amount
@@ -112,11 +112,11 @@ Grant auditors temporary read-only access:
 ```solidity
 address public authorizedAuditor;
 
-function grantAuditorAccess(euint256 value) external onlyOwner {
+function grantAuditorAccess(euint128 value) external onlyOwner {
     FHE.allow(value, authorizedAuditor);
 }
 
-function revokeAuditorAccess(euint256 value) external onlyOwner {
+function revokeAuditorAccess(euint128 value) external onlyOwner {
     FHE.disallow(value, authorizedAuditor);
 }
 ```
@@ -125,7 +125,7 @@ function revokeAuditorAccess(euint256 value) external onlyOwner {
 
 ```solidity
 function grantTimedAccess(
-    euint256 value,
+    euint128 value,
     address recipient,
     uint256 duration
 ) external onlyOwner {
@@ -149,7 +149,7 @@ function executeWithMultisig(
     require(confirmations[txHash][msg.sender], "Not confirmed");
     require(isQuorumReached(txHash), "No quorum");
 
-    euint256 value = FHE.asEuint256(encryptedParams);
+    euint128 value = FHE.aseuint128(encryptedParams);
     FHE.allowThis(value);
     // Execute operation...
 }
@@ -163,10 +163,10 @@ For any encrypted value the contract will operate on:
 
 ```solidity
 // ❌ WRONG - Contract cannot access
-p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+p.encryptedAmount = FHE.aseuint128(encryptedAmount);
 
 // ✅ CORRECT
-p.encryptedAmount = FHE.asEuint256(encryptedAmount);
+p.encryptedAmount = FHE.aseuint128(encryptedAmount);
 FHE.allowThis(p.encryptedAmount);
 ```
 </Step>

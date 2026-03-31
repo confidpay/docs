@@ -18,15 +18,15 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ConfidPay is Ownable {
     struct Payroll {
-        euint256 encryptedAmount;
-        euint256 encryptedNextRelease;
-        euint256 encryptedVestingRate;
-        euint256 encryptedMilestoneHash;
+        euint128 encryptedAmount;
+        euint128 encryptedNextRelease;
+        euint128 encryptedVestingRate;
+        euint128 encryptedMilestoneHash;
         bool isActive;
     }
 
     mapping(address => Payroll) public payrolls;
-    mapping(address => euint256) public encryptedBalances;
+    mapping(address => euint128) public encryptedBalances;
 
     uint256 public constant RELEASE_INTERVAL = 30 days;
 
@@ -45,10 +45,10 @@ contract ConfidPay is Ownable {
 
         Payroll storage p = payrolls[recipient];
 
-        p.encryptedAmount = FHE.asEuint256(encryptedAmount);
-        p.encryptedNextRelease = FHE.asEuint256(encryptedNextRelease);
-        p.encryptedVestingRate = FHE.asEuint256(encryptedVestingRate);
-        p.encryptedMilestoneHash = FHE.asEuint256(encryptedMilestoneHash);
+        p.encryptedAmount = FHE.aseuint128(encryptedAmount);
+        p.encryptedNextRelease = FHE.aseuint128(encryptedNextRelease);
+        p.encryptedVestingRate = FHE.aseuint128(encryptedVestingRate);
+        p.encryptedMilestoneHash = FHE.aseuint128(encryptedMilestoneHash);
         p.isActive = true;
 
         _setupACL(p, recipient);
@@ -78,17 +78,17 @@ contract ConfidPay is Ownable {
         Payroll storage p = payrolls[recipient];
         require(p.isActive, "Payroll inactive");
 
-        euint256 currentTime = FHE.asEuint256(block.timestamp);
+        euint128 currentTime = FHE.aseuint128(block.timestamp);
         ebool canRelease = FHE.lte(p.encryptedNextRelease, currentTime);
 
-        euint256 releaseAmount = FHE.ifThenElse(
+        euint128 releaseAmount = FHE.ifThenElse(
             canRelease,
             _calculateReleaseAmount(p.encryptedAmount, p.encryptedVestingRate),
-            FHE.asEuint256(0)
+            FHE.aseuint128(0)
         );
 
-        ebool hasBalance = FHE.gt(encryptedBalances[recipient], FHE.asEuint256(0));
-        releaseAmount = FHE.ifThenElse(hasBalance, releaseAmount, FHE.asEuint256(0));
+        ebool hasBalance = FHE.gt(encryptedBalances[recipient], FHE.aseuint128(0));
+        releaseAmount = FHE.ifThenElse(hasBalance, releaseAmount, FHE.aseuint128(0));
 
         encryptedBalances[recipient] = FHE.sub(
             encryptedBalances[recipient],
@@ -101,22 +101,22 @@ contract ConfidPay is Ownable {
     }
 
     function _calculateReleaseAmount(
-        euint256 amount,
-        euint256 vestingRate
-    ) internal pure returns (euint256) {
-        return FHE.mul(FHE.div(amount, FHE.asEuint256(100)), vestingRate);
+        euint128 amount,
+        euint128 vestingRate
+    ) internal pure returns (euint128) {
+        return FHE.mul(FHE.div(amount, FHE.aseuint128(100)), vestingRate);
     }
 
     function _updateNextRelease(Payroll storage p, ebool wasReleased) internal {
-        euint256 newReleaseTime = FHE.add(
+        euint128 newReleaseTime = FHE.add(
             p.encryptedNextRelease,
-            FHE.asEuint256(RELEASE_INTERVAL)
+            FHE.aseuint128(RELEASE_INTERVAL)
         );
         p.encryptedNextRelease = FHE.ifThenElse(wasReleased, newReleaseTime, p.encryptedNextRelease);
     }
 
     function depositFunds(address recipient) external payable {
-        euint256 encryptedDeposit = FHE.asEuint256(msg.value);
+        euint128 encryptedDeposit = FHE.aseuint128(msg.value);
         encryptedBalances[recipient] = FHE.add(
             encryptedBalances[recipient],
             encryptedDeposit
@@ -127,11 +127,11 @@ contract ConfidPay is Ownable {
     }
 
     function withdraw(address recipient) external {
-        euint256 balance = encryptedBalances[recipient];
+        euint128 balance = encryptedBalances[recipient];
         FHE.allowThis(balance);
         FHE.allowSender(balance);
 
-        euint256 zero = FHE.asEuint256(0);
+        euint128 zero = FHE.aseuint128(0);
         encryptedBalances[recipient] = zero;
 
         (bool success, ) = recipient.call{value: 0}("");
@@ -151,8 +151,8 @@ contract ConfidPay is Ownable {
         Payroll storage p = payrolls[recipient];
         require(p.isActive, "Payroll not active");
 
-        p.encryptedAmount = FHE.asEuint256(newEncryptedAmount);
-        p.encryptedVestingRate = FHE.asEuint256(newEncryptedVestingRate);
+        p.encryptedAmount = FHE.aseuint128(newEncryptedAmount);
+        p.encryptedVestingRate = FHE.aseuint128(newEncryptedVestingRate);
 
         FHE.allowThis(p.encryptedAmount);
         FHE.allowSender(p.encryptedAmount);
