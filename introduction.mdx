@@ -12,6 +12,7 @@ description: "Wave 1 submission for Fhenix Privacy-by-Design Buildathon"
 Public blockchains default to full transparency. While this enabled trustless DeFi, it created hard barriers for real-world teams deploying on-chain:
 
 **Current limitations:**
+
 - DAOs and Web3 companies expose every salary, bonus, contractor payout, and treasury movement on explorers
 - Social attacks, doxxing risks, and predictable MEV-style front-running on recurring payment flows
 - Institutional and RWA players cannot use transparent rails due to KYC/AML compliance requirements
@@ -23,15 +24,14 @@ Public blockchains default to full transparency. While this enabled trustless De
 
 ConfidPay leverages **Fully Homomorphic Encryption (FHE)** to solve this problem at the architectural level — not as an afterthought.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Confidentiality Requirement                      │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Amount         →  Never visible on-chain                           │
-│  Recipient      →  Never visible on-chain                           │
-│  Vesting rules  →  Never visible on-chain                           │
-│  Milestones     →  Never visible on-chain                           │
+```text
+┌────────────────────────────────────────────
+│                    Confidentiality Requirement                       │
+ ────────────────────────────────────────────│                                                                     │
+│  Amount         →  Never visible on-chain                          │
+│  Recipient      →  Never visible on-chain                          │
+│  Vesting rules  →  Never visible on-chain                          │
+│  Milestones     →  Never visible on-chain                          │
 │                                                                     │
 │  Yet the contract CAN compute on this data:                         │
 │  • Time-based release checks ✓                                      │
@@ -45,17 +45,17 @@ ConfidPay leverages **Fully Homomorphic Encryption (FHE)** to solve this problem
 
 With Fhenix CoFHE, smart contracts can perform operations on encrypted data without ever decrypting it on-chain:
 
-| Encrypted Type | Operations Supported             | Use Case                     |
-|----------------|----------------------------------|------------------------------|
-| `euint128`     | add, sub, mul, div, mod, compare | Salary amounts, timestamps   |
-| `ebool`        | and, or, not, ifThenElse         | Release conditions           |
-| `eaddress`     | comparison                       | Recipient validation         |
+| Encrypted Type | Operations Supported | Use Case |
+| --- | --- | --- |
+| `euint128` | add, sub, mul, div, mod, compare | Salary amounts, timestamps |
+| `ebool` | and, or, not, ifThenElse | Release conditions |
+| `eaddress` | comparison | Recipient validation |
 
 **Key insight:** The CoFHE coprocessor handles heavy FHE computation off-chain, returning encrypted results. Gas costs remain manageable while preserving privacy.
 
 ## High-Level Architecture
 
-```
+```text
 User (DAO Admin)
       │
       ▼
@@ -88,40 +88,41 @@ Plaintext balance revealed only to intended recipient
 
 ## Tech Stack
 
-| Component             | Technology                      | Purpose                                 |
-|-----------------------|---------------------------------|-----------------------------------------|
-| **Encrypted Compute** | Fhenix CoFHE                    | On-chain FHE operations via coprocessor |
-| **Encrypted Types**   | FHE.sol                         | euint128, ebool, eaddress in Solidity   |
-| **ACL System**        | FHE.allow(), FHE.allowThis()    | Decryption permission control           |
-| **Payment Rail**      | Privara SDK                     | Confidential USDC transfers             |
-| **Frontend**          | Next.js + @cofhe/react          | Encryption/decryption hooks             |
-| **Development**       | Hardhat + cofhe-hardhat-starter | Local testing with mocks                |
-
+| Component | Technology | Purpose |
+| --- | --- | --- |
+| **Encrypted Compute** | Fhenix CoFHE | On-chain FHE operations via coprocessor |
+| **Encrypted Types** | FHE.sol | euint128, ebool, eaddress in Solidity |
+| **ACL System** | FHE.allow(), FHE.allowThis() | Decryption permission control |
+| **Payment Rail** | Privara SDK | Confidential USDC transfers |
+| **Frontend** | Next.js \+ @cofhe/react | Encryption/decryption hooks |
+| **Development** | Hardhat \+ cofhe-hardhat-starter | Local testing with mocks |
 
 ## Implementation Progress (Wave 1)
 
 **Completed:**
-- [x] Smart contract skeleton with FHE types
-- [x] ACL setup patterns and best practices
-- [x] Time-based release logic
-- [x] Vesting calculations on encrypted data
-- [x] @cofhe/react hooks integration
-- [x] Privara SDK payment rail integration
 
-**Planned for Wave 2+:**
-- [ ] Milestone-based conditional releases
-- [ ] Multi-signature treasury controls
-- [ ] Auditor selective disclosure
-- [ ] Full EVM composability testing
+- Smart contract skeleton with FHE types
+- ACL setup patterns and best practices
+- Time-based release logic
+- Vesting calculations on encrypted data
+- @cofhe/react hooks integration
+- Privara SDK payment rail integration
+
+**Planned for Wave 2\+:**
+
+- Milestone-based conditional releases
+- Multi-signature treasury controls
+- Auditor selective disclosure
+- Full EVM composability testing
 
 ## Critical Considerations
 
 <Warning>
-**ACL is critical.** Missing `FHE.allow()` or `FHE.allowThis()` calls can permanently lock funds. Only grant decryption access to intended parties.
+  **ACL is critical.** Missing `FHE.allow()` or `FHE.allowThis()` calls can permanently lock funds. Only grant decryption access to intended parties.
 </Warning>
 
 <Warning>
-**Testnet first.** Never deploy ACL-configured contracts to mainnet without extensive testing on testnet.
+  **Testnet first.** Never deploy ACL-configured contracts to mainnet without extensive testing on testnet.
 </Warning>
 
 ## Next Steps
