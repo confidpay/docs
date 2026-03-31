@@ -61,7 +61,7 @@ Implementation of the working prototype (contract deployment + end-to-end flow) 
 - Arbitrum Sepolia
 
 ## Resources
-
+- ConfidPay Documentation: https://confidpay-50c7598f.mintlify.app
 - Fhenix Documentation: https://docs.fhenix.io
 - CoFHE Documentation: https://cofhe-docs.fhenix.zone
 - Privara Documentation: https://reineira.xyz/docs
