@@ -1,306 +1,264 @@
 ---
-title: "React Hooks"
-description: "@cofhe/react hooks for ConfidPay frontend integration"
+title: "Frontend Integration"
+description: "@cofhe/sdk/web integration for ConfidPay frontend"
 ---
 
-# React Hooks
+# Frontend Integration
 
-`@cofhe/react` provides React hooks for encrypting/decrypting data and interacting with ConfidPay contracts.
+ConfidPay uses `@cofhe/sdk/web` for client-side encryption and contract interaction.
+
+<Warning>
+**Note:** `@cofhe/react` is in development. Use `@cofhe/sdk/web` directly for frontend integration.
+</Warning>
 
 ## Installation
 
 ```bash
-npm install @cofhe/react
+npm install @cofhe/sdk
+npm install viem
 ```
 
-## Core Hooks
+## Core SDK Usage
 
-### useEncrypt
+### FhenixClient
 
-Encrypts data client-side before sending to contracts.
+The main client for encryption and decryption:
 
 ```typescript
-import { useEncrypt } from '@cofhe/react';
+import { FhenixClient } from '@cofhe/sdk/web';
 
-function CreatePayroll() {
-  const { encrypt, isEncrypting, error } = useEncrypt();
+const client = new FhenixClient();
 
-  const handleSubmit = async (salary: string) => {
-    const encryptedSalary = await encrypt(salary);
-    // Pass to contract
-  };
+// Encrypt data client-side
+const encryptedSalary = await client.encrypt(5000000);
+const encryptedRelease = await client.encrypt(
+  Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+);
+const encryptedVestingRate = await client.encrypt(100);
+```
 
-  return (
-    <form onSubmit={() => handleSubmit(amount)}>
-      <input name="salary" />
-      <button disabled={isEncrypting}>Create Payroll</button>
-    </form>
-  );
+### Encrypted Types (InEuint128)
+
+Pass encrypted values to contracts using the `InEuint128` format:
+
+```typescript
+import { InEuint128 } from '@cofhe/sdk';
+
+interface InEuint128 {
+  publicAmount: bigint | string;
+  // For re-encrypted values from FHE coprocessor
+  encrypted?: EncryptedNumber;
+}
+
+// Usage with contract calls
+await contract.createPayroll(
+  recipient,
+  { publicAmount: encryptedSalary },  // InEuint128 format
+  { publicAmount: encryptedRelease },
+  { publicAmount: encryptedVestingRate }
+);
+```
+
+## React Integration
+
+### Wrapper Component
+
+Create a wrapper to manage the FhenixClient:
+
+```typescript
+// lib/fhenix.ts
+import { FhenixClient } from '@cofhe/sdk/web';
+
+let client: FhenixClient | null = null;
+
+export function getFhenixClient(): FhenixClient {
+  if (!client) {
+    client = new FhenixClient();
+  }
+  return client;
+}
+
+export function useFhenix() {
+  return getFhenixClient();
 }
 ```
 
-**Returns:**
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `encrypt` | `function` | Encrypts data, returns `einput` |
-| `isEncrypting` | `boolean` | Loading state |
-| `error` | `Error \| null` | Encryption error |
-
-**Supported Types:**
+### Hook Pattern
 
 ```typescript
-// Numbers (converted to wei/wei for decimals)
-const encryptedAmount = await encrypt(5000000); // 5 USDC (6 decimals)
+// hooks/useEncryption.ts
+'use client';
+import { useState, useCallback } from 'react';
+import { getFhenixClient } from '@/lib/fhenix';
 
-// Strings (hashed for conditions)
-const encryptedCondition = await encrypt("milestone_1_completed");
+export function useEncryption() {
+  const [isEncrypting, setIsEncrypting] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-// Addresses
-const encryptedRecipient = await encrypt(recipientAddress);
-```
+  const encrypt = useCallback(async (value: number | bigint) => {
+    setIsEncrypting(true);
+    setError(null);
+    try {
+      const client = getFhenixClient();
+      const encrypted = await client.encrypt(value);
+      return encrypted;
+    } catch (e) {
+      setError(e as Error);
+      throw e;
+    } finally {
+      setIsEncrypting(false);
+    }
+  }, []);
 
-### useDecrypt
-
-Decrypts encrypted contract data for display.
-
-```typescript
-import { useDecrypt } from '@cofhe/react';
-
-function PayrollDashboard({ encryptedBalance }: { encryptedBalance: any }) {
-  const { decrypt, isDecrypting, error } = useDecrypt();
-
-  const handleDecrypt = async () => {
-    const balance = await decrypt(encryptedBalance);
-    console.log('Decrypted balance:', balance);
-  };
-
-  return (
-    <div>
-      <button onClick={handleDecrypt} disabled={isDecrypting}>
-        View Balance
-      </button>
-      {error && <p>Error: {error.message}</p>}
-    </div>
-  );
+  return { encrypt, isEncrypting, error };
 }
 ```
 
-<Warning>
-Only parties with proper ACL permissions can decrypt. Ensure `FHE.allow()` was called for the requesting address.
-</Warning>
-
-### useWrite
-
-Executes contract transactions.
+### Contract Write Hook
 
 ```typescript
-import { useWrite } from '@cofhe/react';
+// hooks/useContract.ts
+'use client';
+import { useState, useCallback } from 'react';
+import { useWalletClient, usePublicClient, useAccount } from 'wagmi';
+import { getFhenixClient } from '@/lib/fhenix';
+import { ConfidPayABI } from '@/contracts/abi';
 
-function PayrollManager() {
-  const { 
-    write, 
-    wait, 
-    isPending, 
-    isConfirming,
-    isConfirmed,
-    error 
-  } = useWrite();
+const CONFIDPAY_ADDRESS = process.env.NEXT_PUBLIC_CONFIDPAY_ADDRESS!;
+
+export function useContractWrite() {
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const write = useCallback(
+    async (functionName: string, args: any[]) => {
+      if (!walletClient || !address) throw new Error('Wallet not connected');
+      
+      setIsPending(true);
+      setError(null);
+
+      try {
+        const hash = await walletClient.writeContract({
+          address: CONFIDPAY_ADDRESS as `0x${string}`,
+          abi: ConfidPayABI,
+          functionName,
+          args,
+        });
+
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        return receipt;
+      } catch (e) {
+        setError(e as Error);
+        throw e;
+      } finally {
+        setIsPending(false);
+      }
+    },
+    [walletClient, publicClient, address]
+  );
+
+  return { write, isPending, error };
+}
+```
+
+### Full Payroll Flow
+
+```typescript
+// components/CreatePayroll.tsx
+'use client';
+import { useState } from 'react';
+import { useEncryption } from '@/hooks/useEncryption';
+import { useContractWrite } from '@/hooks/useContract';
+
+export function CreatePayroll() {
+  const { encrypt, isEncrypting } = useEncryption();
+  const { write, isPending } = useContractWrite();
 
   const createPayroll = async () => {
-    // Execute transaction
-    const tx = await write('createPayroll', [
-      recipient,
-      encryptedAmount,
-      encryptedNextRelease,
-      encryptedVestingRate,
-      encryptedMilestoneHash,
-    ]);
+    const encryptedAmount = await encrypt(5000000); // 5 USDC
+    const encryptedVestingRate = await encrypt(100);
+    const encryptedNextRelease = await encrypt(
+      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
+    );
 
-    // Wait for confirmation
-    const receipt = await wait(tx);
-    
-    if (receipt.status === 'success') {
-      console.log('Payroll created!');
-    }
+    await write('createPayroll', [
+      employeeAddress,
+      { publicAmount: encryptedAmount },
+      { publicAmount: encryptedNextRelease },
+      { publicAmount: encryptedVestingRate },
+    ]);
   };
 
   return (
-    <button onClick={createPayroll} disabled={isPending}>
+    <button onClick={createPayroll} disabled={isPending || isEncrypting}>
       {isPending ? 'Confirming...' : 'Create Payroll'}
     </button>
   );
 }
 ```
 
-**Transaction States:**
-
-| State | Description |
-|-------|-------------|
-| `isPending` | Transaction submitted, waiting for confirmation |
-| `isConfirming` | Transaction confirmed, waiting for blocks |
-| `isConfirmed` | Transaction finalized |
-
-### useRead
-
-Reads encrypted contract data (returns encrypted values).
+### Decrypt Results
 
 ```typescript
-import { useRead } from '@cofhe/react';
+import { getFhenixClient } from '@/lib/fhenix';
 
-function PayrollInfo({ address }: { address: string }) {
-  const { data: encryptedPayroll, isLoading } = useRead({
-    functionName: 'payrolls',
-    args: [address],
-  });
-
-  return (
-    <div>
-      <span>Encrypted Payroll: {encryptedPayroll}</span>
-    </div>
-  );
+async function viewBalance(encryptedBalance: any) {
+  const client = getFhenixClient();
+  const decrypted = await client.decrypt(encryptedBalance);
+  console.log('Balance:', decrypted);
 }
 ```
 
-## Combined Example
-
-### Full Payroll Flow
+## Wagmi Configuration
 
 ```typescript
-import { useEncrypt, useDecrypt, useWrite, useRead } from '@cofhe/react';
+// lib/wagmi.ts
+import { http, createConfig } from 'wagmi';
+import { arbitrumSepolia } from 'wagmi/chains';
 
-function ConfidentialPayroll() {
-  const { encrypt } = useEncrypt();
-  const { decrypt } = useDecrypt();
-  const { write, wait, isPending } = useWrite();
-  const { data: encryptedBalance } = useRead({
-    functionName: 'encryptedBalances',
-    args: [userAddress],
-  });
-
-  const createPayroll = async () => {
-    const encryptedAmount = await encrypt(5000000);
-    const encryptedVestingRate = await encrypt(100);
-    const encryptedNextRelease = await encrypt(
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
-    );
-
-    const tx = await write('createPayroll', [
-      employeeAddress,
-      encryptedAmount,
-      encryptedNextRelease,
-      encryptedVestingRate,
-      0,
-    ]);
-
-    await wait(tx);
-    alert('Payroll created!');
-  };
-
-  const releasePayment = async () => {
-    const tx = await write('releasePayment', [employeeAddress]);
-    await wait(tx);
-  };
-
-  const viewBalance = async () => {
-    const balance = await decrypt(encryptedBalance);
-    console.log('Your balance:', balance);
-  };
-
-  return (
-    <div className="payroll-dashboard">
-      <h2>Confidential Payroll</h2>
-      
-      <button onClick={createPayroll} disabled={isPending}>
-        Create Employee Payroll
-      </button>
-      
-      <button onClick={releasePayment} disabled={isPending}>
-        Release Payment
-      </button>
-      
-      <button onClick={viewBalance}>
-        View My Balance
-      </button>
-    </div>
-  );
-}
-```
-
-## Configuration
-
-### Provider Setup
-
-```typescript
-import { CofheProvider } from '@cofhe/react';
-import { http } from 'viem';
-import { baseSepolia, arbitrumSepolia } from 'viem/chains';
-
-function App() {
-  return (
-    <CofheProvider
-      config={{
-        chains: [baseSepolia, arbitrumSepolia],
-        transports: {
-          [baseSepolia.id]: http('https://sepolia.base.org'),
-          [arbitrumSepolia.id]: http('https://sepolia.arbitrum.io/rpc'),
-        },
-        contractAddress: '0x...', // Your deployed ConfidPay address
-      }}
-    >
-      <PayrollDashboard />
-    </CofheProvider>
-  );
-}
-```
-
-### Configuration Options
-
-```typescript
-interface CofheConfig {
-  chains: Chain[];
-  transports: Record<number, Transport>;
-  contractAddress: Address;
-  coprocessorUrl?: string;  // Custom CoFHE endpoint
-  debug?: boolean;          // Enable debug logging
-}
+export const config = createConfig({
+  chains: [arbitrumSepolia],
+  transports: {
+    [arbitrumSepolia.id]: http('https://sepolia.arbitrum.io/rpc'),
+  },
+});
 ```
 
 ## Error Handling
 
 ```typescript
-const { encrypt, error: encryptError } = useEncrypt();
-const { write, error: writeError } = useWrite();
+const { encrypt, error: encryptError } = useEncryption();
+const { write, error: writeError } = useContractWrite();
 
 if (encryptError) {
   console.error('Encryption failed:', encryptError.message);
 }
 
 if (writeError) {
-  switch (writeError.code) {
-    case 'REJECTED':
-      console.log('User rejected transaction');
-      break;
-    case 'INSUFFICIENT_FUNDS':
-      console.log('Not enough gas');
-      break;
-    case 'ACL_ERROR':
-      console.log('Missing decryption permissions');
-      break;
-  }
+  console.error('Transaction failed:', writeError.message);
 }
 ```
 
 ## Best Practices
 
 1. **Always encrypt client-side** — Never send plaintext sensitive data
-2. **Handle loading states** — Show spinners during encryption/decryption
-3. **Manage errors gracefully** — Provide user-friendly error messages
-4. **Use appropriate types** — Convert amounts to correct decimal places
-5. **Test on testnets** — Verify integration before mainnet deployment
+2. **Use InEuint128 format** — Pass `{ publicAmount: encrypted }` to contracts
+3. **Handle loading states** — Show spinners during encryption/transactions
+4. **Manage errors gracefully** — Provide user-friendly error messages
+5. **Use appropriate types** — Convert amounts to correct decimal places
+6. **Test on testnets** — Verify integration before mainnet deployment
+
+## Resources
+
+- [Fhenix CoFHE Docs](https://cofhe-docs.fhenix.zone/)
+- [ReineiraOS Docs](https://docs.reineira.xyz/)
+- [Wagmi Docs](https://wagmi.sh/)
 
 <Cards>
-  <Card icon="link" title="Privara Integration" href="/privara-integration">
+  <Card icon="link" title="ReineiraOS Integration" href="/privara-integration">
     Payment rail integration
   </Card>
   <Card icon="rocket" title="Quickstart" href="/quickstart">

@@ -1,0 +1,99 @@
+---
+title: Getting Started
+description: Set up ConfidPay development environment
+---
+
+# Getting Started
+
+This guide will help you set up the ConfidPay development environment and run your first tests.
+
+## Prerequisites
+
+- **Node.js** v18 or later
+- **pnpm** (recommended) or npm
+- Basic understanding of Solidity and smart contracts
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/confidpay/ConfidPay-Starter.git
+cd ConfidPay-Starter/cofhe-hardhat-starter
+```
+
+### 2. Install Dependencies
+
+```bash
+pnpm install
+```
+
+This installs:
+- Hardhat and plugins
+- Fhenix CoFHE contracts
+- `@cofhe/sdk` for client-side encryption
+- Testing dependencies
+
+### 3. Compile Contracts
+
+```bash
+pnpm compile
+```
+
+Expected output:
+```
+Compiled 12 Solidity files successfully (evm target: cancun).
+```
+
+## Running Tests
+
+### Local Testing (Mock FHE)
+
+```bash
+pnpm test
+```
+
+This runs against a mock FHE environment for fast iteration.
+
+Expected output:
+```
+✓ cofhe-hardhat-plugin :: deploy mocks
+
+  ConfidPay
+    Deployment
+      ✔ Should set admin correctly
+      ✔ Should set confidential token correctly
+    Create Payroll
+      ✔ Should create payroll as admin
+      ✔ Should create payroll with Linear vesting
+      ✔ Should create payroll with Cliff vesting
+      ...
+
+  26 passing (11s)
+```
+
+## Project Structure
+
+```
+ConfidPay-Starter/
+├── contracts/
+│   ├── ConfidPay.sol              # Main payroll contract
+│   ├── Counter.sol               # Example FHE contract
+│   ├── interfaces/
+│   │   └── IFHERC20.sol        # Token interface
+│   └── mock/
+│       └── MockFHERC20.sol      # Mock token for testing
+├── test/
+│   ├── ConfidPay.test.ts       # Phase 1 & 2 tests
+│   └── Counter.test.ts         # Example tests
+├── tasks/                       # Hardhat tasks
+├── hardhat.config.ts           # Hardhat configuration
+└── package.json
+```
+
+## Next Steps
+
+1. **[Architecture](/architecture)** - Understand the system design
+2. **[Smart Contracts](/contracts/overview)** - Learn how ConfidPay works
+3. **[API Reference](/api/overview)** - Explore all contract functions
+4. **[SDK Integration](/sdk/overview)** - Client-side encryption/decryption

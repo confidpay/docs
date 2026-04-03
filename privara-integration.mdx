@@ -1,11 +1,11 @@
 ---
-title: "Privara SDK Integration"
-description: "Integrating ConfidPay with Privara SDK for confidential USDC flows"
+title: "ReineiraOS Integration"
+description: "Confidential escrow and insurance integration for payment rails"
 ---
 
-# Privara SDK Integration
+# ReineiraOS Integration
 
-Privara SDK provides the payment rail layer for confidential USDC transfers in ConfidPay.
+ConfidPay uses ReineiraOS for confidential escrow infrastructure and insurance coverage on payment flows.
 
 ## Overview
 
@@ -16,262 +16,206 @@ Privara SDK provides the payment rail layer for confidential USDC transfers in C
 │  • ACL management                                           │
 │  • Release conditions                                       │
 └─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
+                               │
+                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Privara SDK Layer                        │
-│  • ConfidentialTransfer                                     │
-│  • Escrow                                                   │
-│  • Programmable release                                     │
+│                    ReineiraOS Layer                        │
+│  • IConfidentialEscrow - Hold funds until conditions met   │
+│  • IInsuranceManager - Coverage on escrow                  │
+│  • IFHERC20 - Confidential USDC transfers                  │
 └─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
+                               │
+                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     USDC (on Base/Arbitrum)                 │
+│                   USDC (on Arbitrum Sepolia)               │
 └─────────────────────────────────────────────────────────────┘
+```
+
+## Payment Flow
+
+### Before (Direct Transfer)
+
+```
+Admin → createPayroll() → salary stored encrypted
+Employee → claimPayment() → confidentialToken.transfer() → Employee gets tokens
+```
+
+### After (Escrow Flow)
+
+```
+Admin → createPayroll() → salary stored encrypted
+Admin → createPaymentEscrow() → Escrow created (off-chain)
+Admin → fundEscrow() → Funds escrow + insurance auto-attached
+Employee → getMyPendingEscrows() → View pending escrows
+Employee → redeem() via SDK → Employee gets tokens
+```
+
+## Contract Interfaces
+
+### IConfidentialEscrow
+
+```solidity
+interface IConfidentialEscrow {
+    function create(
+        address owner,
+        uint256 amount,
+        address resolver,
+        bytes calldata resolverData
+    ) external returns (uint256);
+    
+    function fund(uint256 escrowId, uint256 amount) external;
+    function redeem(uint256 escrowId) external;
+    function exists(uint256 escrowId) external view returns (bool);
+    function isFunded(uint256 escrowId) external view returns (bool);
+    function isRedeemable(uint256 escrowId) external view returns (bool);
+    function paymentToken() external view returns (address);
+}
+```
+
+### IInsuranceManager
+
+```solidity
+interface IInsuranceManager {
+    function purchaseCoverage(
+        address pool,
+        address policy,
+        uint256 escrowId,
+        uint256 coverageAmount,
+        uint256 expiry
+    ) external returns (uint256);
+    
+    function getCoverageStatus(uint256 coverageId) external view returns (uint8);
+}
+```
+
+### IFHERC20 (Updated)
+
+```solidity
+interface IFHERC20 {
+    function confidentialTransfer(
+        address to,
+        InEuint64 memory encryptedAmount
+    ) external returns (euint64);
+    
+    function confidentialBalanceOf(
+        address account
+    ) external view returns (euint64);
+}
+```
+
+## ConfidPay Integration
+
+### New State Variables
+
+```solidity
+IFHERC20 public confidentialToken;
+IConfidentialEscrow public escrowContract;
+IInsuranceManager public insuranceManager;
+address public insurancePoolId;      // Changed from uint256 → address
+address public insurancePolicy;
+uint256 public coverageExpirySeconds;
+```
+
+### New Functions
+
+| Function | Purpose |
+|----------|---------|
+| `configureInsurance(address pool, address policy, uint256 expirySeconds)` | Admin sets insurance pool/policy |
+| `createPaymentEscrow(address employee, uint256 amount)` | Creates escrow for employee |
+| `fundEscrow(address employee, uint256 escrowId, uint256 amount)` | Funds escrow + auto-purchases insurance |
+| `getMyPendingEscrows()` | Employee views pending escrows |
+| `markEscrowClaimed(uint256 escrowId)` | Marks escrow as claimed |
+| `getEscrowContract()` | Returns escrow contract address |
+| `getInsuranceConfig()` | Returns insurance settings |
+
+### Insurance Auto-Attachment
+
+```solidity
+function fundEscrow(
+    address employee,
+    uint256 escrowId,
+    uint256 amount
+) external onlyAdmin {
+    escrowContract.fund(escrowId, amount);
+    
+    if (
+        address(insuranceManager) != address(0) &&
+        insurancePolicy != address(0)
+    ) {
+        uint256 expiry = block.timestamp + coverageExpirySeconds;
+        insuranceManager.purchaseCoverage(
+            insurancePoolId,
+            insurancePolicy,
+            escrowId,
+            amount,
+            expiry
+        );
+    }
+}
+```
+
+## Mock Contracts
+
+For local testing:
+
+```solidity
+MockConfidentEscrow.sol   // Simulates real escrow (create/fund/redeem)
+MockInsuranceManager.sol   // Simulates insurance (purchaseCoverage/getCoverageStatus)
+MockFHERC20.sol          // Mock USDC token
+```
+
+## Deployment Addresses (Arbitrum Sepolia)
+
+| Component | Mock Address | Real (Arbitrum Sepolia) |
+|-----------|--------------|------------------------|
+| Escrow | Local | `0xC4333F84F5034D8691CB95f068def2e3B6DC60Fa` |
+| USDC | MockFHERC20 | `0x6b6e6479b8b3237933c3ab9d8be969862d4ed89f` |
+| Insurance | Mock | `0xf421363B642315BD3555dE2d9BD566B7f9213c8E` |
+
+## Phase 3: SDK Integration
+
+```typescript
+// Frontend integration with @cofhe/sdk/web
+const escrow = await sdk.escrow.create({
+  amount: sdk.usdc(1000),
+  owner: employeeAddress,
+  insurance: {
+    pool: poolAddress,
+    policy: policyAddress,
+    coverageAmount: sdk.usdc(1000),
+    expiry: Math.floor(Date.now() / 1000) + 86400 * 30
+  }
+})
+
+// Event listening
+sdk.events.onEscrowFunded((escrowId, payer) => { ... })
+sdk.events.onEscrowRedeemed((escrowId) => { ... })
 ```
 
 ## Installation
 
 ```bash
-npm install @reineiralabs/sdk
+npm install @cofhe/sdk
+npm install @reineira-os/sdk
 ```
 
-## Core Patterns
+<Warning>
+**Note:** `@cofhe/react` is in development. For now, use `@cofhe/sdk/web` directly for frontend integration.
+</Warning>
 
-### Confidential Transfer
+## Resources
 
-```typescript
-import { ConfidentialTransfer, TransferType } from '@reineiralabs/sdk';
-
-const transfer = new ConfidentialTransfer({
-  token: 'USDC',
-  amount: encryptedAmount,
-  recipient: encryptedRecipient,
-  type: TransferType.PAYROLL,
-  conditions: encryptedConditions,
-});
-
-const tx = await transfer.build();
-await tx.wait();
-```
-
-### Escrow Pattern
-
-```typescript
-import { Escrow } from '@reineiralabs/sdk';
-
-const escrow = new Escrow({
-  token: 'USDC',
-  depositedAmount: encryptedAmount,
-  beneficiary: encryptedRecipient,
-  releaseCondition: encryptedMilestoneHash,
-  timeout: encryptedTimestamp,
-});
-
-// Deposit funds
-await escrow.deposit({ value: depositAmount });
-
-// Release when conditions met
-await escrow.release();
-```
-
-### Programmable Release
-
-```typescript
-import { ProgrammablePayment } from '@reineiralabs/sdk';
-
-const payment = new ProgrammablePayment({
-  token: 'USDC',
-  amount: encryptedSalary,
-  recipient: encryptedRecipient,
-  schedule: [
-    {
-      unlockTime: encryptedNextMonth,
-      percentage: encryptedVestingRate,
-    },
-  ],
-  milestoneConditions: encryptedMilestones,
-});
-
-await payment.create();
-await payment.executeReleases();
-```
-
-## React Integration
-
-### usePrivaraTransfer Hook
-
-```typescript
-import { usePrivaraTransfer } from '@reineiralabs/sdk/react';
-
-function PayrollDashboard() {
-  const { 
-    createTransfer, 
-    executeRelease, 
-    getEncryptedBalance,
-    isLoading, 
-    error 
-  } = usePrivaraTransfer({
-    token: 'USDC',
-    chainId: 84532, // Base Sepolia
-  });
-
-  const handleRelease = async (recipient: string) => {
-    const encryptedRecipient = await encrypt(recipient);
-    await executeRelease({
-      recipient: encryptedRecipient,
-      conditions: encryptedMilestoneHash,
-    });
-  };
-
-  return (
-    <button onClick={() => handleRelease(recipient)}>
-      Release Payment
-    </button>
-  );
-}
-```
-
-### useEncryptedBalance Hook
-
-```typescript
-import { useEncryptedBalance } from '@reineiralabs/sdk/react';
-
-function BalanceDisplay({ address }: { address: string }) {
-  const { 
-    balance, 
-    encryptedBalance,
-    isLoading,
-    refetch 
-  } = useEncryptedBalance({
-    address,
-    token: 'USDC',
-  });
-
-  if (isLoading) return <span>Loading...</span>;
-
-  return (
-    <div>
-      <span>Encrypted Balance: {encryptedBalance}</span>
-      <button onClick={refetch}>Refresh</button>
-    </div>
-  );
-}
-```
-
-## ConfidPay + Privara Integration
-
-### Complete Flow
-
-```typescript
-import { useEncrypt, useWrite, useDecrypt } from '@cofhe/react';
-import { ConfidentialTransfer } from '@reineiralabs/sdk';
-
-async function createConfidentialPayroll(
-  recipient: string,
-  amount: bigint,
-  vestingRate: number
-) {
-  const { encrypt } = useEncrypt();
-  const { write } = useWrite();
-
-  const encryptedAmount = await encrypt(amount);
-  const encryptedRecipient = await encrypt(recipient);
-  const encryptedVestingRate = await encrypt(vestingRate);
-  const encryptedNextRelease = await encrypt(
-    Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
-  );
-
-  // 1. Create payroll in ConfidPay
-  await write('createPayroll', [
-    recipient,
-    encryptedAmount,
-    encryptedNextRelease,
-    encryptedVestingRate,
-    0,
-  ]);
-
-  // 2. Create confidential transfer via Privara
-  const transfer = new ConfidentialTransfer({
-    token: 'USDC',
-    amount: encryptedAmount,
-    recipient: encryptedRecipient,
-    type: TransferType.PAYROLL,
-  });
-
-  await transfer.build().then(tx => tx.wait());
-}
-
-async function releasePayment(recipient: string) {
-  const { write, wait } = useWrite();
-  
-  // 1. Trigger release in ConfidPay
-  const tx = await write('releasePayment', [recipient]);
-  await wait(tx);
-  
-  // 2. Execute confidential transfer via Privara
-  const { decrypt } = useDecrypt();
-  const encryptedBalance = await decrypt(/* encrypted balance */);
-  
-  const transfer = new ConfidentialTransfer({
-    token: 'USDC',
-    amount: encryptedBalance,
-    recipient: await encrypt(recipient),
-    type: TransferType.RELEASE,
-  });
-
-  await transfer.execute();
-}
-```
-
-## Supported Networks
-
-| Network          | Chain ID | Status  |
-| ---------------- | -------- | ------- |
-| Base Sepolia     | 84532    | Testnet |
-| Arbitrum Sepolia | 421614   | Testnet |
-
-## Error Handling
-
-```typescript
-import { PrivaraError, ErrorCode } from '@reineiralabs/sdk';
-
-try {
-  await transfer.execute();
-} catch (error) {
-  if (error instanceof PrivaraError) {
-    switch (error.code) {
-      case ErrorCode.INSUFFICIENT_BALANCE:
-        console.log('Insufficient encrypted balance');
-        break;
-      case ErrorCode.CONDITIONS_NOT_MET:
-        console.log('Release conditions not satisfied');
-        break;
-      case ErrorCode.DECRYPTION_FAILED:
-        console.log('Unable to decrypt transfer data');
-        break;
-    }
-  }
-}
-```
-
-## Best Practices
-
-1. **Always encrypt client-side** before passing to SDK
-2. **Set appropriate ACL** for all encrypted fields
-3. **Handle errors gracefully** with proper error codes
-4. **Use Testnet first** to verify integration before Mainnet
-5. **Monitor gas costs** — encrypted operations cost more than plaintext
+- [ReineiraOS Docs](https://docs.reineira.xyz/)
+- [Fhenix CoFHE Docs](https://cofhe-docs.fhenix.zone/)
 
 <Cards>
   <Card icon="book" title="Architecture" href="/architecture">
     System architecture overview
   </Card>
-  <Card icon="code" title="React Hooks" href="/frontend/react-hooks">
-    @cofhe/react integration guide
+  <Card icon="shield" title="ACL Best Practices" href="/security/acl-best-practices">
+    Secure permission management
   </Card>
-  <Card icon="shield" title="Security" href="/security/acl-best-practices">
-    ACL best practices
+  <Card icon="code" title="Payroll Contract" href="/contracts/payroll-contract">
+    Complete contract reference
   </Card>
 </Cards>

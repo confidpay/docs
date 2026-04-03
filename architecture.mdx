@@ -5,7 +5,7 @@ description: "How ConfidPay's encrypted computation architecture works"
 
 # Architecture
 
-ConfidPay combines Fhenix CoFHE for encrypted computation with Privara SDK for confidential payment flows.
+ConfidPay combines Fhenix CoFHE for encrypted computation with ReineiraOS for confidential payment rails.
 
 ## System Overview
 
@@ -13,33 +13,33 @@ ConfidPay combines Fhenix CoFHE for encrypted computation with Privara SDK for c
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         User (DAO Admin)                            │
 └─────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
+                                   │
+                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Frontend (Next.js + @cofhe/react)                │
-│  • useEncrypt() - Encrypt salary/conditions                         │
-│  • useWrite() - Submit transactions                                 │
-│  • useDecrypt() - View encrypted results                            │
+│                    Frontend (@cofhe/sdk/web)                        │
+│  • Client-side encryption via FhenixClient                          │
+│  • Transaction submission                                            │
+│  • Encrypted result decryption                                       │
 └─────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
+                                   │
+                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    ConfidPay.sol (on-chain)                         │
 │  • Stores euint128 (encryptedAmount, encryptedNextRelease, etc.)    │
-│  • ACL permissions (allowThis, allowSender, allow)                  │
-│  • Triggers computations via CoFHE                                  │
+│  • ACL permissions (allowThis, allow)                               │
+│  • Vesting calculations on encrypted data                           │
+│  • Triggers escrow creation via ReineiraOS                          │
 └─────────────────────────────────────────────────────────────────────┘
-                                  │
-                    ┌─────────────┴─────────────┐
-                    ▼                           ▼
+                                   │
+                     ┌─────────────┴─────────────┐
+                     ▼                           ▼
 ┌───────────────────────────────┐   ┌───────────────────────────────────┐
-│   CoFHE Coprocessor           │   │       Privara SDK Layer           │
-│   (off-chain FHE compute)     │   │   (confidential stablecoin flows) │
+│   CoFHE Coprocessor           │   │       ReineiraOS Layer            │
+│   (off-chain FHE compute)     │   │   (confidential payment rails)    │
 │                               │   │                                   │
-│   • Encrypted arithmetic      │   │   • Encrypted USDC transfers      │
-│   • Time-based release logic  │   │   • Escrow patterns               │
-│   • Vesting calculations      │   │   • Programmable conditions       │
-│   • Milestone verification    │   │                                   │
+│   • Encrypted arithmetic      │   │   • ConfidentialEscrow            │
+│   • Time-based release logic  │   │   • Insurance coverage            │
+│   • Vesting calculations      │   │   • IFHERC20 transfers            │
 └───────────────────────────────┘   └───────────────────────────────────┘
 ```
 
@@ -49,12 +49,12 @@ ConfidPay combines Fhenix CoFHE for encrypted computation with Privara SDK for c
 
 Fhenix provides Solidity-compatible encrypted types:
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `euint128` | Encrypted 128-bit unsigned integer | Salary amounts |
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `euint128` | Encrypted 128-bit unsigned integer | Salary amounts, balances |
+| `euint64` | Encrypted 64-bit unsigned integer | Timestamps |
 | `ebool` | Encrypted boolean | Release conditions |
 | `eaddress` | Encrypted address | Recipient wallets |
-| `euint64` | Encrypted 64-bit unsigned integer | Timestamps |
 
 ### Operations
 
@@ -64,10 +64,14 @@ euint128 encryptedSum = FHE.add(encryptedA, encryptedB);
 euint128 encryptedProduct = FHE.mul(encryptedAmount, encryptedRate);
 
 // Comparison (runs on encrypted data!)
-ebool canRelease = FHE.lte(encryptedNextRelease, currentTime);
+ebool canRelease = FHE.le(encryptedNextRelease, currentTime);
 
-// Conditional logic
-euint128 releaseAmount = FHE.ifThenElse(canRelease, encryptedAmount, FHE.aseuint128(0));
+// Conditional logic - USE FHE.select(), NOT if()
+euint128 releaseAmount = FHE.select(
+    canRelease,
+    FHE.div(FHE.mul(encryptedAmount, encryptedRate), FHE.asEuint128(100)),
+    FHE.asEuint128(0)
+);
 ```
 
 ### ACL (Access Control List)
@@ -78,65 +82,71 @@ Critical for security — controls who can decrypt:
 // Allow the contract itself to access
 FHE.allowThis(encryptedAmount);
 
-// Allow the transaction sender to access
-FHE.allowSender(encryptedAmount);
-
 // Allow specific recipient to decrypt their own data
-FHE.allow(encryptedAmount, recipient);
+FHE.allow(encryptedAmount, employee);  // NOT allowSender!
 
 // Allow authorized auditor
 FHE.allow(encryptedAmount, auditorAddress);
 ```
 
 <Warning>
+**Important:** `FHE.allowSender()` grants access to the **transaction caller** (admin), NOT the employee. Always use `FHE.allow(value, employee)` for employee access.
+</Warning>
+
+<Warning>
 Missing `FHE.allow()` or `FHE.allowThis()` calls can permanently lock funds. Always grant access to the contract and intended recipient.
 </Warning>
 
-## Privara SDK Layer
+## ReineiraOS Layer
 
-The Privara SDK handles confidential stablecoin flows:
+ReineiraOS handles confidential payment flows through escrow infrastructure:
 
-- **Encrypted transfers** — Move USDC without revealing amounts
-- **Escrow patterns** — Hold funds until conditions are met
-- **Programmable release** — Trigger by time, milestones, or custom logic
+- **ConfidentialEscrow** — Hold funds until conditions are met
+- **InsuranceManager** — Coverage on escrow amounts
+- **IFHERC20** — Confidential USDC transfers
 
-```typescript
-import { ConfidentialTransfer } from '@reineiralabs/sdk';
+### Payment Flow
 
-// Create encrypted payment intent
-const transfer = new ConfidentialTransfer({
-  recipient: encryptedRecipient,
-  amount: encryptedAmount,
-  token: 'USDC',
-  conditions: encryptedMilestoneHash,
-});
+```
+1. Admin → createPayroll() → Salary stored encrypted
+2. Admin → createPaymentEscrow() → Escrow created
+3. Admin → fundEscrow() → Funds escrow + insurance auto-attached
+4. Employee → getMyPendingEscrows() → View pending escrows
+5. Employee → redeem() via SDK → Employee gets tokens
 ```
 
-## Frontend Integration
+## SDK Integration
 
-The `@cofhe/react` library provides React hooks:
+The `@cofhe/sdk` provides client-side encryption:
 
 ```typescript
-import { useEncrypt, useDecrypt, useWrite } from '@cofhe/react';
+import { FhenixClient, InEuint128 } from '@cofhe/sdk/web';
+
+const client = new FhenixClient();
 
 // Encrypt sensitive data client-side
-const { encrypt } = useEncrypt();
-const encryptedSalary = await encrypt(salaryAmount);
+const encryptedSalary = await client.encrypt(salaryAmount);
 
 // Write to contract
-const { write } = useWrite();
-await write('createPayroll', [recipient, encryptedSalary, ...]);
+await write('createPayroll', [
+  recipient,
+  { publicAmount: encryptedSalary },  // InEuint128 format
+  { publicAmount: encryptedNextRelease },
+  { publicAmount: encryptedVestingRate },
+]);
 
 // Decrypt results (only for authorized parties)
-const { decrypt } = useDecrypt();
-const plaintext = await decrypt(encryptedResult);
+const plaintext = await client.decrypt(encryptedResult);
 ```
 
-## Network Support
+<Warning>
+**Note:** `@cofhe/react` is in development. Use `@cofhe/sdk/web` directly for frontend integration.
+</Warning>
+
+## Supported Networks
 
 | Network | RPC URL | Explorer |
 |---------|---------|----------|
-| Base Sepolia | `https://sepolia.base.org` | [Basescan](https://base-sepolia.blockscout.com) |
 | Arbitrum Sepolia | `https://sepolia.arbitrum.io/rpc` | [Arbiscan](https://sepolia.arbiscan.io) |
 
 ## Data Flow
@@ -145,8 +155,9 @@ const plaintext = await decrypt(encryptedResult);
 2. **Submission**: Transaction submitted with encrypted inputs
 3. **Storage**: Contract stores encrypted values (not readable on-chain)
 4. **Computation**: CoFHE coprocessor performs calculations on encrypted data
-5. **Release**: Payment released when conditions are met (still encrypted)
-6. **Decryption**: Recipient decrypts their own payment locally
+5. **Escrow Creation**: ConfidPay creates escrow via ReineiraOS
+6. **Funding**: Admin funds escrow with USDC
+7. **Redemption**: Employee redeems via SDK
 
 ## Composability
 
@@ -162,3 +173,15 @@ function lendToProtocol(uint256 protocolId) external {
     // Operates on encrypted data!
 }
 ```
+
+<Cards>
+  <Card icon="link" title="ReineiraOS Integration" href="/privara-integration">
+    Escrow and insurance integration
+  </Card>
+  <Card icon="shield" title="ACL Best Practices" href="/security/acl-best-practices">
+    Secure permission management
+  </Card>
+  <Card icon="rocket" title="Quickstart" href="/quickstart">
+    End-to-end setup guide
+  </Card>
+</Cards>

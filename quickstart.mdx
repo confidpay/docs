@@ -1,30 +1,31 @@
 ---
-title: "Getting Started"
+title: "Quickstart"
 description: "Begin building ConfidPay for the Fhenix Buildathon"
 ---
 
-# Getting Started
+# Quickstart
 
-**This guide walks you through setting up your development environment and deploying the ConfidPay skeleton contract.**
+**This guide walks you through setting up your development environment and deploying ConfidPay.**
 
 ## Prerequisites
 
-- Node.js v19+
+- Node.js v18+
 - Git
-- Testnet ETH from faucet (Base Sepolia or Arbitrum Sepolia)
+- Testnet ETH from faucet (Arbitrum Sepolia recommended)
 
 ## Step 1: Clone the Starter Project
 
 ```bash
-git clone https://github.com/confidpay/cofhe-hardhat-starter
-cd cofhe-hardhat-starter
+git clone https://github.com/confidpay/ConfidPay-Starter
+cd ConfidPay-Starter/cofhe-hardhat-starter
 npm install
 ```
 
 The starter includes:
 - Hardhat configuration with Fhenix plugin
 - CoFHE mock environment for local testing
-- Example contracts demonstrating FHE types
+- ConfidPay contract with vesting and milestones
+- 26 passing tests
 
 ## Step 2: Configure Environment
 
@@ -38,54 +39,67 @@ Add your configuration:
 
 ```bash
 # Required
-PRIVATE_KEY=0x...           # Deployer wallet private key
+PRIVATE_KEY=0x...                       # Deployer wallet private key
 
-# Testnet RPCs (choose one or both)
-BASE_SEPOLIA_RPC=https://sepolia.base.org
+# Arbitrum Sepolia (recommended)
 ARBITRUM_SEPOLIA_RPC=https://sepolia.arbitrum.io/rpc
 ```
 
 **Get testnet ETH:**
-- [Base Sepolia Faucet](https://www.alchemy.com/faucets/base-sepolia)
 - [Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
 
-## Step 3: Explore the Contract Structure
+## Step 3: Run Tests
+
+Before testnet deployment, verify everything works locally:
+
+```bash
+npm test
+```
+
+Expected output:
+```
+  ConfidPay
+    Deployment
+      ✔ Should set admin correctly
+      ✔ Should set confidential token correctly
+    Create Payroll
+      ✔ Should create payroll as admin
+      ✔ Should create payroll with Linear vesting
+      ✔ Should create payroll with Cliff vesting
+      ...
+
+  26 passing
+```
+
+## Step 4: Explore the Contract Structure
 
 ```
 contracts/
-├── ConfidPay.sol           # Main payroll contract (your implementation)
-├── FHEHelper.sol           # ACL utilities
-└── mocks/
-    └── MockUSDC.sol        # Test token
+├── ConfidPay.sol           # Main payroll contract
+├── interfaces/
+│   └── IFHERC20.sol       # Token interface
+└── mock/
+    └── MockFHERC20.sol    # Mock token for testing
 ```
 
-Key FHE types you'll work with:
+Key FHE patterns:
 
 ```solidity
 // contracts/ConfidPay.sol
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import "@fhenixprotocol/cofhe-contracts/operations/operations.sol";
 
 contract ConfidPay {
-    // Encrypted 128-bit integer - stores salary, amounts, timestamps
+    // Encrypted salary - stored as euint128
     euint128 public encryptedAmount;
     
-    // Encrypted boolean - stores release conditions
-    ebool public encryptedCanRelease;
-    
-    // Encrypted address - stores recipient
-    eaddress public encryptedRecipient;
+    // ACL setup - grant access to employee
+    FHE.allowThis(encryptedAmount);
+    FHE.allow(encryptedAmount, employee);  // NOT allowSender!
 }
 ```
 
-## Step 4: Deploy the Skeleton Contract
-
-Deploy to Base Sepolia:
-
-```bash
-npx hardhat run scripts/deploy.ts --network baseSepolia
-```
-
-Deploy to Arbitrum Sepolia:
+## Step 5: Deploy to Testnet
 
 ```bash
 npx hardhat run scripts/deploy.ts --network arbitrumSepolia
@@ -98,108 +112,53 @@ ConfidPay deployed to: 0x...
 
 Save this address — you'll need it for the frontend integration.
 
-## Step 5: Test with Local Mock
-
-Before testnet deployment, test locally with the CoFHE mock:
-
-```typescript
-// test/ConfidPay.test.ts
-import { expect } from 'chai';
-import { FhenixHelpers } from '@fhenixprotocol/contracts';
-
-describe('ConfidPay ACL Setup', function () {
-  it('should set correct ACL permissions', async function () {
-    const { confipay, owner, employee } = await loadFixture(deployFixture);
-    
-    // Encrypt values locally for testing
-    const encryptedAmount = FhenixHelpers.encrypt(5000000);
-    
-    await confipay.createPayroll(
-      employee.address,
-      encryptedAmount,
-      // ... other encrypted params
-    );
-    
-    // Verify ACL was set correctly
-    const hasACL = await confipay.verifyACL(employee.address);
-    expect(hasACL).to.be.true;
-  });
-});
-```
-
-Run tests:
-
-```bash
-npx hardhat test
-```
-
 ## Step 6: Frontend Integration
 
-Set up the Next.js frontend:
+Install dependencies:
 
 ```bash
-npx create-next-app@latest my-confidpay-frontend
-cd my-confidpay-frontend
-npm install @cofhe/react viem
+npm install @cofhe/sdk viem wagmi
 ```
 
-Configure the provider:
+Create the Fhenix client:
 
-```tsx
-// app/providers.tsx
-import { CofheProvider } from '@cofhe/react';
-import { baseSepolia } from 'viem/chains';
-import { http } from 'viem';
+```typescript
+// lib/fhenix.ts
+import { FhenixClient } from '@cofhe/sdk/web';
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <CofheProvider
-      config={{
-        chains: [baseSepolia],
-        transports: {
-          [baseSepolia.id]: http(),
-        },
-        contractAddress: '0x...', // Your deployed address
-      }}
-    >
-      {children}
-    </CofheProvider>
-  );
+let client: FhenixClient | null = null;
+
+export function getFhenixClient(): FhenixClient {
+  if (!client) {
+    client = new FhenixClient();
+  }
+  return client;
 }
 ```
 
-## Step 7: Encrypt and Submit
+Create payroll with encryption:
 
-The core workflow — all encryption happens client-side:
+```typescript
+// components/CreatePayroll.tsx
+import { getFhenixClient } from '@/lib/fhenix';
 
-```tsx
-// app/payroll/create.tsx
-import { useEncrypt, useWrite } from '@cofhe/react';
+async function createEncryptedPayroll() {
+  const client = getFhenixClient();
+  
+  // 1. Encrypt all sensitive data BEFORE sending to contract
+  const encryptedAmount = await client.encrypt(5000000); // 5 USDC
+  const encryptedReleaseTime = await client.encrypt(
+    Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 // 30 days
+  );
+  const encryptedVestingRate = await client.encrypt(100); // 100%
 
-function CreatePayroll() {
-  const { encrypt } = useEncrypt();
-  const { write } = useWrite();
-
-  const createEncryptedPayroll = async () => {
-    // 1. Encrypt all sensitive data BEFORE sending to contract
-    const encryptedAmount = await encrypt(5000000); // 5 USDC
-    const encryptedReleaseTime = await encrypt(
-      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 // 30 days
-    );
-    const encryptedVestingRate = await encrypt(100); // 100%
-
-    // 2. Submit transaction with encrypted values
-    // On-chain: only euint128 is stored, plaintext is never visible
-    await write('createPayroll', [
-      employeeAddress,
-      encryptedAmount,
-      encryptedReleaseTime,
-      encryptedVestingRate,
-      0, // milestone hash
-    ]);
-  };
-
-  return <button onClick={createEncryptedPayroll}>Create Payroll</button>;
+  // 2. Submit transaction with encrypted values
+  await write('createPayroll', [
+    employeeAddress,
+    { publicAmount: encryptedAmount },      // InEuint128 format
+    { publicAmount: encryptedReleaseTime },
+    { publicAmount: encryptedVestingRate },
+  ]);
 }
 ```
 
@@ -208,11 +167,11 @@ function CreatePayroll() {
 ```
 1. ENCRYPT (client-side)
    salary = 5000000
-   ↓ useEncrypt()
+   ↓ client.encrypt()
    encryptedSalary = "0xencrypted..."
 
 2. SUBMIT (on-chain)
-   tx = createPayroll(recipient, encryptedSalary, ...)
+   tx = createPayroll(recipient, {publicAmount: encryptedSalary}, ...)
    → Contract stores euint128, not plaintext
    → Block explorer shows only: "0xencrypted..."
 
@@ -221,28 +180,43 @@ function CreatePayroll() {
    → Comparison happens on encrypted values
    → Result is also encrypted
 
-4. RELEASE (on-chain)
-   Payment transferred (still encrypted to outside observers)
+4. ESCROW (ReineiraOS)
+   Payment held in escrow until conditions met
 
 5. DECRYPT (client-side only)
-   recipient.decrypt(payment)
+   client.decrypt(payment)
    → salary = 5000000 (plaintext revealed only to recipient)
 ```
 
 ## Common Pitfalls
 
 <AccordionGroup>
-  <Accordion title="Missing ACL permissions">
-    **Never skip ACL setup.** For every encrypted field:
+  <Accordion title="Using allowSender instead of allow">
+    **Never use `FHE.allowSender()` for employee access.** It grants admin access, not employee access.
 
     ```solidity
-    // ❌ WRONG - Funds locked forever
-    p.encryptedAmount = FHE.aseuint128(encryptedAmount);
+    // ❌ WRONG - Employee cannot decrypt
+    FHE.allowSender(p.encryptedAmount);
 
-    // ✅ CORRECT
-    p.encryptedAmount = FHE.aseuint128(encryptedAmount);
-    FHE.allowThis(p.encryptedAmount);        // Contract can access
-    FHE.allow(p.encryptedAmount, recipient);  // Recipient can decrypt
+    // ✅ CORRECT - Employee can decrypt their own data
+    FHE.allow(p.encryptedAmount, employee);
+    ```
+  </Accordion>
+  <Accordion title="Using if() with FHE comparisons">
+    **Never use `if (FHE.eq(...))` or `if (FHE.lt(...))`.** Use `FHE.select()` instead.
+
+    ```solidity
+    // ❌ WRONG - Compilation will fail
+    if (FHE.eq(value, FHE.asEuint128(0))) {
+        revert("Zero");
+    }
+
+    // ✅ CORRECT - Use FHE.select()
+    euint128 result = FHE.select(
+        FHE.eq(value, FHE.asEuint128(0)),
+        FHE.asEuint128(0),
+        value
+    );
     ```
   </Accordion>
   <Accordion title="Decimal handling">
@@ -251,6 +225,9 @@ function CreatePayroll() {
   <Accordion title="Timestamps">
     Use Unix timestamps (seconds), not milliseconds. `Date.now() / 1000`, not `Date.now()`.
   </Accordion>
+  <Accordion title="Type conversion">
+    Use `InEuint128.Constructor` for function parameters and `FHE.asEuint128()` to convert.
+  </Accordion>
 </AccordionGroup>
 
 ## Next Steps
@@ -258,11 +235,10 @@ function CreatePayroll() {
 - Review the [Architecture](/architecture) for deeper technical understanding
 - Explore the [Payroll Contract](/contracts/payroll-contract) implementation
 - Study [ACL Best Practices](/security/acl-best-practices) before testnet deployment
-- Check [Privara Integration](/privara-integration) for payment rail details
+- Check [ReineiraOS Integration](/privara-integration) for payment rail details
 
 ## Resources
 
-- [Fhenix Documentation](https://docs.fhenix.io)
-- [CoFHE Contracts](https://github.com/fhenixprotocol/cofhe-contracts)
-- [Privara SDK](https://github.com/reineiralabs/sdk)
-- [Fhenix Discord](https://discord.gg/fhenix) — Get help from the team
+- [Fhenix CoFHE Docs](https://cofhe-docs.fhenix.zone/)
+- [ReineiraOS Docs](https://docs.reineira.xyz/)
+- [Fhenix Discord](https://discord.gg/fhenix)

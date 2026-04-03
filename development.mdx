@@ -11,46 +11,43 @@ Set up a local development environment for building with ConfidPay.
 
 | Requirement | Version | Notes |
 |-------------|---------|-------|
-| Node.js | 19+ | Required for modern JS features |
+| Node.js | 18+ | Required for modern JS features |
 | npm/yarn/pnpm | Latest | Package manager |
 | Git | Any | Version control |
 
 ## Project Structure
 
 ```
-my-confidpay-project/
-├── contracts/
-│   ├── ConfidPay.sol
-│   └── interfaces/
-├── scripts/
-│   ├── deploy.ts
-│   └── interact.ts
-├── test/
-│   └── ConfidPay.test.ts
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   └── lib/
-├── hardhat.config.ts
-└── package.json
+ConfidPay-Starter/
+├── cofhe-hardhat-starter/
+│   ├── contracts/
+│   │   ├── ConfidPay.sol
+│   │   └── interfaces/
+│   ├── scripts/
+│   ├── test/
+│   ├── hardhat.config.ts
+│   └── package.json
+└── documentation/
+    └── docs/
 ```
 
 ## Installation
 
-### 1. Clone the Starter
+### Clone and Install
 
 ```bash
-npx degit confidpay/cofhe-hardhat-starter my-confidpay-project
-cd my-confidpay-project
+git clone https://github.com/confidpay/ConfidPay-Starter
+cd ConfidPay-Starter/cofhe-hardhat-starter
 npm install
 ```
 
-### 2. Install Dependencies
+### Install Dependencies
 
 ```bash
-npm install @fhenixprotocol/contracts @fhenixprotocol/cofhe-contracts
-npm install @openzeppelin/contracts @reineiralabs/sdk
-npm install @cofhe/react viem wagmi
+npm install @fhenixprotocol/cofhe-contracts
+npm install @openzeppelin/contracts
+npm install viem wagmi
+npm install @cofhe/sdk
 ```
 
 ## Hardhat Configuration
@@ -59,29 +56,25 @@ npm install @cofhe/react viem wagmi
 // hardhat.config.ts
 import { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-ethers';
-import '@fhenixprotocol/hardhat-plugin';
+import '@cofhe/hardhat-plugin';
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.20',
+    version: '0.8.25',
     settings: {
       optimizer: {
         enabled: true,
         runs: 200,
       },
+      viaIR: true,  // Required for stack-too-deep issues
     },
   },
   networks: {
     hardhat: {
       forking: {
-        url: 'https://sepolia.base.org',
+        url: 'https://sepolia.arbitrum.io/rpc',
         enabled: true,
       },
-    },
-    baseSepolia: {
-      url: 'https://sepolia.base.org',
-      accounts: [process.env.PRIVATE_KEY!],
-      chainId: 84532,
     },
     arbitrumSepolia: {
       url: 'https://sepolia.arbitrum.io/rpc',
@@ -98,11 +91,9 @@ export default config;
 
 ```bash
 # .env
-PRIVATE_KEY=0x...              # Deployer wallet
-BASE_SEPOLIA_RPC=https://sepolia.base.org
+PRIVATE_KEY=0x...                      # Deployer wallet
 ARBITRUM_SEPOLIA_RPC=https://sepolia.arbitrum.io/rpc
-BASESCAN_API_KEY=...           # For contract verification
-ARBISCAN_API_KEY=...           # For contract verification
+ARBISCAN_API_KEY=...                    # For contract verification
 ```
 
 ## Deployment
@@ -110,10 +101,6 @@ ARBISCAN_API_KEY=...           # For contract verification
 ### Deploy to Testnet
 
 ```bash
-# Base Sepolia
-npx hardhat run scripts/deploy.ts --network baseSepolia
-
-# Arbitrum Sepolia
 npx hardhat run scripts/deploy.ts --network arbitrumSepolia
 ```
 
@@ -127,12 +114,12 @@ async function main() {
   console.log('Deploying ConfidPay...');
 
   const ConfidPay = await ethers.getContractFactory('ConfidPay');
-  const contract = await ConfidPay.deploy();
-
+  const token = await ethers.deployContract('MockFHERC20');
+  
+  const contract = await ConfidPay.deploy(await token.getAddress());
   await contract.waitForDeployment();
-  const address = await contract.getAddress();
 
-  console.log(`ConfidPay deployed to: ${address}`);
+  console.log(`ConfidPay deployed to: ${await contract.getAddress()}`);
 }
 
 main().catch((error) => {
@@ -147,13 +134,13 @@ main().catch((error) => {
 
 ```bash
 # All tests
-npx hardhat test
+npm test
 
 # Specific test file
-npx hardhat test test/ConfidPay.test.ts
+npm test test/ConfidPay.test.ts
 
 # With gas report
-REPORT_GAS=true npx hardhat test
+REPORT_GAS=true npm test
 ```
 
 ### Test Example
@@ -161,95 +148,83 @@ REPORT_GAS=true npx hardhat test
 ```typescript
 // test/ConfidPay.test.ts
 import { expect } from 'chai';
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers';
 import { ethers } from 'hardhat';
-import { FhenixHelpers } from '@fhenixprotocol/contracts';
 
 describe('ConfidPay', function () {
-  let confipay: any;
-  let owner: any;
-  let employee: any;
+  async function deployFixture() {
+    const [owner, employee] = await ethers.getSigners();
 
-  beforeEach(async function () {
-    [owner, employee] = await ethers.getSigners();
-
+    const Token = await ethers.getContractFactory('MockFHERC20');
+    const token = await Token.deploy();
+    
     const ConfidPay = await ethers.getContractFactory('ConfidPay');
-    confipay = await ConfidPay.deploy();
-    await confipay.waitForDeployment();
-  });
+    const confipay = await ConfidPay.deploy(await token.getAddress());
+
+    return { confipay, token, owner, employee };
+  }
 
   describe('Payroll Creation', function () {
     it('should create encrypted payroll', async function () {
-      const encryptedAmount = FhenixHelpers.encrypt(5000000);
-      const encryptedNextRelease = FhenixHelpers.encrypt(
-        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
-      );
-      const encryptedVestingRate = FhenixHelpers.encrypt(100);
+      const { confipay, employee } = await loadFixture(deployFixture);
+
+      // Mock FHE encryption for testing
+      const encryptedAmount = 5000000n;
+      const encryptedNextRelease = BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60);
+      const encryptedVestingRate = 100n;
 
       await confipay.createPayroll(
         employee.address,
         encryptedAmount,
         encryptedNextRelease,
-        encryptedVestingRate,
-        0
+        encryptedVestingRate
       );
 
       const payroll = await confipay.payrolls(employee.address);
       expect(payroll.isActive).to.be.true;
     });
-
-    it('should set correct ACL permissions', async function () {
-      // Test ACL setup
-      const canContractAccess = await confipay.canContractAccess(employee.address);
-      expect(canContractAccess).to.be.true;
-    });
   });
 });
 ```
 
-## Local Mock Testing
-
-The Hardhat plugin provides a local CoFHE mock for testing:
-
-```typescript
-// hardhat.config.ts
-import '@fhenixprotocol/hardhat-plugin';
-
-const config: HardhatUserConfig = {
-  // ... other config
-  fhenix: {
-    enableMock: true, // Use local mock instead of testnet
-  },
-};
-```
-
-Run tests without testnet dependency:
-
-```bash
-npx hardhat test --network hardhat
-```
-
 ## Frontend Development
 
-### Start Next.js Dev Server
+### Install Frontend Dependencies
 
 ```bash
-cd frontend
-npm run dev
+npm install @cofhe/sdk viem wagmi
 ```
 
 ### Configuration
 
 ```typescript
 // frontend/lib/config.ts
+import { arbitrumSepolia } from 'wagmi/chains';
+
 export const config = {
-  supportedChains: [baseSepolia, arbitrumSepolia],
+  supportedChains: [arbitrumSepolia],
   contracts: {
     confidpay: {
-      [baseSepolia.id]: '0x...', // Base Sepolia address
-      [arbitrumSepolia.id]: '0x...', // Arbitrum Sepolia address
+      [arbitrumSepolia.id]: process.env.NEXT_PUBLIC_CONFIDPAY_ADDRESS,
     },
   },
 };
+```
+
+### FhenixClient Setup
+
+```typescript
+// frontend/lib/fhenix.ts
+import { FhenixClient } from '@cofhe/sdk/web';
+
+let client: FhenixClient | null = null;
+
+export function getFhenixClient(): FhenixClient {
+  if (!client) {
+    client = new FhenixClient();
+  }
+  return client;
+}
 ```
 
 ## Contract Verification
@@ -257,9 +232,6 @@ export const config = {
 Verify on block explorers:
 
 ```bash
-# Base Sepolia
-npx hardhat verify --network baseSepolia <CONTRACT_ADDRESS>
-
 # Arbitrum Sepolia
 npx hardhat verify --network arbitrumSepolia <CONTRACT_ADDRESS>
 ```
@@ -267,17 +239,20 @@ npx hardhat verify --network arbitrumSepolia <CONTRACT_ADDRESS>
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="Error: Cannot find module '@fhenixprotocol/contracts'">
-    Run `npm install @fhenixprotocol/contracts @fhenixprotocol/cofhe-contracts`
+  <Accordion title="Error: Cannot find module '@cofhe/hardhat-plugin'">
+    Run `npm install @cofhe/hardhat-plugin @cofhe/sdk`
   </Accordion>
   <Accordion title="Error: Invalid private key">
     Ensure your .env file has the correct format: `PRIVATE_KEY=0x...`
   </Accordion>
   <Accordion title="Error: Insufficient funds">
-    Get testnet ETH from a faucet for Base Sepolia or Arbitrum Sepolia
+    Get testnet ETH from [Arbitrum Sepolia Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
+  </Accordion>
+  <Accordion title="Stack too deep">
+    Enable `viaIR: true` in hardhat.config.ts solidity settings
   </Accordion>
   <Accordion title="Encryption/Decryption fails">
-    Ensure ACL is set correctly with `FHE.allow()`, `FHE.allowThis()`, `FHE.allowSender()`
+    Ensure ACL is set correctly with `FHE.allow()`, `FHE.allowThis()`
   </Accordion>
 </AccordionGroup>
 
@@ -285,20 +260,61 @@ npx hardhat verify --network arbitrumSepolia <CONTRACT_ADDRESS>
 
 ```bash
 # Compile contracts
-npx hardhat compile
+npm run compile
 
 # Run tests
-npx hardhat test
+npm test
 
 # Deploy
-npx hardhat run scripts/deploy.ts --network baseSepolia
+npm run deploy -- --network arbitrumSepolia
 
 # Verify contract
-npx hardhat verify <address> --network baseSepolia
-
-# Check gas usage
-REPORT_GAS=true npx hardhat test
+npx hardhat verify <address> --network arbitrumSepolia
 
 # Clean build artifacts
-npx hardhat clean
+npm run clean
+```
+
+## Key Patterns
+
+### Correct ACL Setup
+
+```solidity
+function _setupACL(Payroll storage p, address recipient) internal {
+    // Contract access
+    FHE.allowThis(p.encryptedAmount);
+    
+    // Employee access (NOT allowSender!)
+    FHE.allow(p.encryptedAmount, recipient);
+}
+```
+
+### Correct Type Conversion
+
+```solidity
+function createPayroll(
+    address recipient,
+    InEuint128.Constructor calldata encryptedAmount,
+    InEuint128.Constructor calldata encryptedNextRelease,
+    InEuint128.Constructor calldata encryptedVestingRate
+) external onlyOwner {
+    Payroll storage p = payrolls[recipient];
+    
+    p.encryptedAmount = FHE.asEuint128(encryptedAmount);
+    p.encryptedNextRelease = FHE.asEuint128(encryptedNextRelease);
+    p.encryptedVestingRate = FHE.asEuint128(encryptedVestingRate);
+    
+    _setupACL(p, recipient);
+}
+```
+
+### Correct Encrypted Conditional
+
+```solidity
+// Use FHE.select(), NOT if()
+euint128 releaseAmount = FHE.select(
+    FHE.le(p.encryptedNextRelease, currentTime),
+    FHE.div(FHE.mul(p.encryptedAmount, p.encryptedVestingRate), FHE.asEuint128(100)),
+    FHE.asEuint128(0)
+);
 ```

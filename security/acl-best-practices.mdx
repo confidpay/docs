@@ -7,18 +7,6 @@ description: "Secure access control list management for FHE encrypted data"
 
 The Access Control List (ACL) system in Fhenix CoFHE determines who can decrypt encrypted data. Proper ACL management is critical — mistakes can permanently lock funds.
 
-## Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    FHE ACL System                                   │
-│                                                                     │
-│  FHE.allowThis(value)  → Contract can access                        │
-│  FHE.allowSender(value) → Tx sender can access                      │
-│  FHE.allow(value, address) → Specific address can access            |
-└─────────────────────────────────────────────────────────────────────┘
-```
-
 ## Core ACL Functions
 
 ### FHE.allowThis
@@ -33,18 +21,6 @@ FHE.allowThis(encryptedAmount);
 - Contract needs to perform operations on the value
 - Required for computation via CoFHE coprocessor
 
-### FHE.allowSender
-
-Grants the **transaction sender** permission to access.
-
-```solidity
-FHE.allowSender(encryptedAmount);
-```
-
-**Use when:**
-- The caller needs to decrypt the result after execution
-- For owner-only functions where owner should see results
-
 ### FHE.allow
 
 Grants a **specific address** permission to access.
@@ -54,70 +30,63 @@ FHE.allow(encryptedAmount, recipient);
 ```
 
 **Use when:**
-- Recipient needs to decrypt their own data
+- Recipient needs to decrypt their own data (use THIS, not allowSender)
 - Auditor needs to verify specific records
-- Third-party integration requires access
+
+<Warning>
+**Important:** `FHE.allowSender()` grants access to the **transaction caller**, NOT the employee. Always use `FHE.allow(value, employee)` when creating payroll for another address.
+</Warning>
 
 ## Common Patterns
 
-### Pattern 1: Standard Payroll Setup
+### Pattern 1: Standard Payroll Setup (Correct)
 
 For each encrypted field in a payroll:
 
 ```solidity
 function createPayroll(
     address recipient,
-    einput encryptedAmount,
-    einput encryptedNextRelease,
-    einput encryptedVestingRate,
-    einput encryptedMilestoneHash
+    InEuint128.Constructor calldata encryptedAmount,
+    InEuint128.Constructor calldata encryptedNextRelease,
+    InEuint128.Constructor calldata encryptedVestingRate
 ) external onlyOwner {
     Payroll storage p = payrolls[recipient];
 
-    // Convert einput to euint128
-    p.encryptedAmount = FHE.aseuint128(encryptedAmount);
-    p.encryptedNextRelease = FHE.aseuint128(encryptedNextRelease);
-    p.encryptedVestingRate = FHE.aseuint128(encryptedVestingRate);
-    p.encryptedMilestoneHash = FHE.aseuint128(encryptedMilestoneHash);
+    // Convert InEuint128 to euint128 (takes 4 constructor args)
+    p.encryptedAmount = FHE.asEuint128(encryptedAmount);
+    p.encryptedNextRelease = FHE.asEuint128(encryptedNextRelease);
+    p.encryptedVestingRate = FHE.asEuint128(encryptedVestingRate);
     p.isActive = true;
 
-    // ACL for amount
+    // ACL for amount - use allow(value, employee), NOT allowSender!
     FHE.allowThis(p.encryptedAmount);
-    FHE.allowSender(p.encryptedAmount);
     FHE.allow(p.encryptedAmount, recipient);
 
     // ACL for next release
     FHE.allowThis(p.encryptedNextRelease);
-    FHE.allowSender(p.encryptedNextRelease);
     FHE.allow(p.encryptedNextRelease, recipient);
 
     // ACL for vesting rate
     FHE.allowThis(p.encryptedVestingRate);
-    FHE.allowSender(p.encryptedVestingRate);
     FHE.allow(p.encryptedVestingRate, recipient);
-
-    // ACL for milestone hash
-    FHE.allowThis(p.encryptedMilestoneHash);
-    FHE.allowSender(p.encryptedMilestoneHash);
-    FHE.allow(p.encryptedMilestoneHash, recipient);
 
     emit PayrollCreated(recipient);
 }
 ```
 
-### Pattern 2: Auditor Access
+### Pattern 2: Viewing Encrypted Data
 
-Grant auditors temporary read-only access:
+Grant yourself access to view an employee's data:
 
 ```solidity
-address public authorizedAuditor;
-
-function grantAuditorAccess(euint128 value) external onlyOwner {
-    FHE.allow(value, authorizedAuditor);
-}
-
-function revokeAuditorAccess(euint128 value) external onlyOwner {
-    FHE.disallow(value, authorizedAuditor);
+function viewEmployeePayroll(address employee) external onlyOwner returns (uint256) {
+    Payroll storage p = payrolls[employee];
+    
+    // Owner needs access to decrypt and see the result
+    FHE.allowThis(p.encryptedAmount);
+    FHE.allow(p.encryptedAmount, msg.sender);
+    
+    return FHE.decrypt(p.encryptedAmount);
 }
 ```
 
@@ -126,32 +95,10 @@ function revokeAuditorAccess(euint128 value) external onlyOwner {
 ```solidity
 function grantTimedAccess(
     euint128 value,
-    address recipient,
-    uint256 duration
+    address recipient
 ) external onlyOwner {
     FHE.allow(value, recipient);
     // Note: In production, implement automatic expiration via scheduled job
-}
-```
-
-### Pattern 4: Multi-Signature Control
-
-For high-value operations:
-
-```solidity
-mapping(bytes32 => bool) public executedTxs;
-mapping(bytes32 => mapping(address => bool)) public confirmations;
-
-function executeWithMultisig(
-    bytes32 txHash,
-    einput encryptedParams
-) external {
-    require(confirmations[txHash][msg.sender], "Not confirmed");
-    require(isQuorumReached(txHash), "No quorum");
-
-    euint128 value = FHE.aseuint128(encryptedParams);
-    FHE.allowThis(value);
-    // Execute operation...
 }
 ```
 
@@ -163,35 +110,23 @@ For any encrypted value the contract will operate on:
 
 ```solidity
 // ❌ WRONG - Contract cannot access
-p.encryptedAmount = FHE.aseuint128(encryptedAmount);
+p.encryptedAmount = FHE.asEuint128(encryptedAmount);
 
 // ✅ CORRECT
-p.encryptedAmount = FHE.aseuint128(encryptedAmount);
+p.encryptedAmount = FHE.asEuint128(encryptedAmount);
 FHE.allowThis(p.encryptedAmount);
 ```
 </Step>
 
-<Step title="Always grant recipient access">
+<Step title="Use FHE.allow(value, employee) for employee access">
 Recipients must be able to decrypt their own data:
 
 ```solidity
-// ❌ WRONG - Recipient cannot see their balance
-encryptedBalances[recipient] = amount;
+// ❌ WRONG - Uses allowSender (grants admin/caller access, not employee!)
+FHE.allowSender(p.encryptedAmount);
 
-// ✅ CORRECT
-encryptedBalances[recipient] = amount;
-FHE.allow(encryptedBalances[recipient], recipient);
-```
-</Step>
-
-<Step title="Use allowSender for owner functions">
-If the owner should see operation results:
-
-```solidity
-function updatePayroll(...) external onlyOwner {
-    // ...
-    FHE.allowSender(p.encryptedAmount);
-}
+// ✅ CORRECT - Grant employee access explicitly
+FHE.allow(p.encryptedAmount, employee);
 ```
 </Step>
 
@@ -205,7 +140,6 @@ function cancelPayroll(address recipient) external onlyOwner {
     // Revoke all permissions
     FHE.disallow(p.encryptedAmount, recipient);
     FHE.disallow(p.encryptedNextRelease, recipient);
-    // ... revoke all fields
     
     p.isActive = false;
 }
@@ -217,17 +151,13 @@ Always verify ACL setup with tests:
 
 ```typescript
 describe('ACL Setup', () => {
-  it('should allow contract to access encrypted amount', async () => {
-    const contractBalance = await cofhe.canContractAccess(encryptedAmount);
-    expect(contractBalance).to.be.true;
-  });
-
-  it('should allow recipient to decrypt their balance', async () => {
-    const canDecrypt = await cofhe.canAddressDecrypt(recipient, encryptedAmount);
+  it('should allow employee to decrypt their own payroll', async () => {
+    // Employee should be able to decrypt their encrypted salary
+    const canDecrypt = await cofhe.canAddressDecrypt(employee, encryptedAmount);
     expect(canDecrypt).to.be.true;
   });
 
-  it('should NOT allow random address to decrypt', async () {
+  it('should NOT allow random address to decrypt', async () => {
     const canDecrypt = await cofhe.canAddressDecrypt(randomAddress, encryptedAmount);
     expect(canDecrypt).to.be.false;
   });
@@ -240,42 +170,11 @@ describe('ACL Setup', () => {
 
 | Mistake | Consequence | Fix |
 |---------|-------------|-----|
+| Using `allowSender` for employee | Employee cannot decrypt, admin can | Use `FHE.allow(value, employee)` |
 | Missing `allowThis` | Contract cannot operate on value | Always call `FHE.allowThis()` |
-| Missing `allow(recipient)` | Recipient cannot decrypt | Grant access to intended parties |
+| Missing `allow(employee)` | Employee cannot decrypt | Grant access to intended parties |
 | Forgotten ACL in loops | Some values locked | Verify all loop iterations |
 | Not revoking on cleanup | Stale permissions | Revoke when data expires |
-| Over-permissive access | Security breach | Grant minimum required access |
-
-## Testing ACL
-
-### Hardhat Test Example
-
-```typescript
-import { expect } from 'chai';
-import { ethers } from 'hardhat';
-
-describe('ConfidPay ACL', function () {
-  it('should set correct ACL on payroll creation', async function () {
-    const { confipay, owner, employee } = await loadFixture(deployFixture);
-
-    await confipay.createPayroll(
-      employee.address,
-      encryptedAmount,
-      encryptedNextRelease,
-      encryptedVestingRate,
-      encryptedMilestoneHash
-    );
-
-    // Verify contract access
-    const contractCanAccess = await confipay.canContractAccess(employee.address);
-    expect(contractCanAccess).to.be.true;
-
-    // Verify recipient access
-    const recipientCanDecrypt = await confipay.canAddressDecrypt(employee.address);
-    expect(recipientCanDecrypt).to.be.true;
-  });
-});
-```
 
 ## Emergency Procedures
 
